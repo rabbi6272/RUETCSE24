@@ -59,6 +59,13 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<Api
 
 export type OobRequestType = "PASSWORD_RESET" | "EMAIL_SIGNIN" | "VERIFY_EMAIL";
 
+/** `alice@example.com` → `a***@example.com`; logs never carry full addresses. */
+export function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at < 1) return "***";
+  return `${email[0]}***${email.slice(at)}`;
+}
+
 export async function sendOobCode(options: {
   requestType: OobRequestType;
   email: string;
@@ -77,7 +84,11 @@ export async function sendOobCode(options: {
     body.canHandleCodeInApp = options.canHandleCodeInApp;
   }
 
-  return post("accounts:sendOobCode", body);
+  const result = await post<{ requestType?: string }>("accounts:sendOobCode", body);
+  const line = `[auth] oob ${options.requestType} ${maskEmail(body.email as string)} -> ${result.ok ? "sent" : result.code}`;
+  if (result.ok) console.log(line);
+  else console.error(line);
+  return result;
 }
 
 /** Completes a clicked email sign-in link; creates the account if none exists. */
@@ -85,8 +96,15 @@ export async function signInWithOutboundLink(
   oobCode: string,
   email: string,
 ): Promise<ApiResult<{ idToken: string; email?: string; localId?: string }>> {
-  return post("accounts:signInWithEmailLink", {
-    oobCode,
-    email: email.trim().toLowerCase(),
-  });
+  const result = await post<{ idToken: string; email?: string; localId?: string }>(
+    "accounts:signInWithEmailLink",
+    {
+      oobCode,
+      email: email.trim().toLowerCase(),
+    },
+  );
+  const line = `[auth] oob-exchange ${maskEmail(email.trim().toLowerCase())} -> ${result.ok ? "ok" : result.code}`;
+  if (result.ok) console.log(line);
+  else console.error(line);
+  return result;
 }

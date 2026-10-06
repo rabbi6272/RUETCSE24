@@ -1,7 +1,7 @@
 import "server-only";
 
 import { adminAuth } from "../firebase/admin";
-import { sendOobCode } from "./oob.server";
+import { sendOobCode, maskEmail } from "./oob.server";
 import { getSession } from "./session";
 
 /**
@@ -41,7 +41,7 @@ export async function freshEmailVerified(uid: string): Promise<boolean> {
     const user = await adminAuth.getUser(uid);
     return user.emailVerified;
   } catch (error) {
-    console.error("fresh email verification check failed", error);
+    console.error("[auth] fresh email verification check failed", error);
     return false;
   }
 }
@@ -58,6 +58,7 @@ export async function resendVerification(): Promise<
     return { ok: false, error: "Sign in to resend the verification email." };
   }
   if (session.emailVerified || (await freshEmailVerified(session.uid))) {
+    console.log(`[auth] verify-resend ${maskEmail(session.email)} -> already-verified`);
     return { ok: true };
   }
 
@@ -80,7 +81,7 @@ export async function resendVerification(): Promise<
 
     if (!exchange.ok || !data.idToken) {
       console.error(
-        "verification token exchange failed",
+        "[auth] verification token exchange failed",
         data.error?.message ?? exchange.status,
       );
       return { ok: false, error: "Something went wrong. Please try again." };
@@ -94,13 +95,13 @@ export async function resendVerification(): Promise<
     });
 
     if (!sent.ok) {
-      console.error("verification email failed", session.email, sent.code);
       return { ok: false, error: "Something went wrong. Please try again." };
     }
 
+    console.log(`[auth] verify-resend ${maskEmail(session.email)} -> ok`);
     return { ok: true };
   } catch (error) {
-    console.error("resend verification failed", error);
+    console.error("[auth] resend verification failed", error);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 }

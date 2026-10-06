@@ -17,7 +17,7 @@ import {
   setPrivateContact,
   writeProfile,
 } from "../db/students/students.admin.repo";
-import { sendOobCode, signInWithOutboundLink } from "./oob.server";
+import { sendOobCode, signInWithOutboundLink, maskEmail } from "./oob.server";
 import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
 import { seriesFromRoll } from "../../types/series";
@@ -90,18 +90,25 @@ export async function startClaim(rawEmail: string): Promise<Result<{ message: st
 
   // Eligibility is decided here and never disclosed to the caller. The roll
   // must belong to a registered series, or the claimed profile could not be
-  // filed into any directory.
-  let eligible =
-    legacy !== null &&
-    seriesFromRoll(legacy.roll) !== null &&
-    !(await authEmailExists(email));
+  // filed into any directory. The logged `deny` reason is the operator's
+  // window into why an address was silently skipped.
+  let deny: string | null = null;
+  if (!legacy) {
+    deny = "no-legacy";
+  } else if (seriesFromRoll(legacy.roll) === null) {
+    deny = "bad-series";
+  } else if (await authEmailExists(email)) {
+    deny = "auth-exists";
+  }
 
   // A legacy record whose roll is already held by a different identity is a
   // duplicate of a seeded student, not an unclaimed profile.
-  if (eligible && legacy) {
-    const holder = await findProfileByRoll(legacy.roll);
-    if (holder !== null) eligible = false;
+  if (deny === null && legacy && (await findProfileByRoll(legacy.roll)) !== null) {
+    deny = "roll-held";
   }
+
+  const eligible = deny === null;
+  console.log(`[auth] claim start ${maskEmail(email)} -> ${deny ?? "eligible"}`);
 
   if (eligible) {
     const now = Date.now();
@@ -118,15 +125,15 @@ export async function startClaim(rawEmail: string): Promise<Result<{ message: st
       return true;
     });
 
-    if (canSend) {
-      const sent = await sendOobCode({
+    if (!canSend) {
+      console.log(`[auth] claim cooldown ${maskEmail(email)} (resend dropped)`);
+    } else {
+      await sendOobCode({
         requestType: "EMAIL_SIGNIN",
         email,
         continueUrl: claimContinueUrl(),
         canHandleCodeInApp: true,
       });
-      // A mail failure must not be distinguishable from success either.
-      if (!sent.ok) console.error("claim sign-in link failed", email, sent.code);
     }
   }
 
@@ -146,6 +153,7 @@ export async function openClaimLink(
   const parsed = claimStartSchema.safeParse({ email: rawEmail });
 
   if (!oobCode || !parsed.success) {
+    console.log("[auth] claim link -> invalid-input");
     return { ok: false, error: GENERIC_LINK_MESSAGE };
   }
 
@@ -157,6 +165,7 @@ export async function openClaimLink(
 
   const signedInAs = (exchanged.data.email ?? "").trim().toLowerCase();
   if (signedInAs && signedInAs !== parsed.data.email) {
+    console.log(`[auth] claim link -> email-mismatch ${maskEmail(parsed.data.email)}`);
     return { ok: false, error: GENERIC_LINK_MESSAGE };
   }
 
@@ -164,13 +173,16 @@ export async function openClaimLink(
   // the legacy entry must exist and its roll must still be unheld.
   const legacy = await findLegacyByEmail(parsed.data.email);
   if (!legacy) {
+    console.log(`[auth] claim link -> no-legacy ${maskEmail(parsed.data.email)}`);
     return { ok: false, error: "This profile is no longer available to claim." };
   }
   if ((await findProfileByRoll(legacy.roll)) !== null) {
+    console.log(`[auth] claim link -> roll-held ${legacy.roll}`);
     return { ok: false, error: "This profile has already been claimed." };
   }
 
   await createSessionCookie(exchanged.data.idToken);
+  console.log(`[auth] claim link -> ok ${maskEmail(parsed.data.email)} (session opened)`);
   return { ok: true };
 }
 
@@ -204,24 +216,29 @@ export async function completeClaim(
   const parsed = claimCompleteSchema.safeParse(input);
 
   if (!parsed.success) {
+    console.log("[auth] claim complete -> invalid-input");
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Check your details." };
   }
 
   const session = await getSession();
   if (!session) {
+    console.log("[auth] claim complete -> no-session");
     return { ok: false, error: "Your claim session expired. Start again." };
   }
 
   // Bound to the mailbox the link verified — never to client-supplied input.
   const legacy = await findLegacyByEmail(session.email);
   if (!legacy || seriesFromRoll(legacy.roll) === null) {
+    console.log(`[auth] claim complete -> no-legacy ${maskEmail(session.email)}`);
     return { ok: false, error: "This profile is no longer available to claim." };
   }
   if ((await findProfileByRoll(legacy.roll)) !== null) {
+    console.log(`[auth] claim complete -> roll-held ${legacy.roll}`);
     return { ok: false, error: "This profile has already been claimed." };
   }
 
   if (!(await reserveRoll(legacy.roll, session.uid))) {
+    console.log(`[auth] claim complete -> reserve-failed ${legacy.roll}`);
     return { ok: false, error: "That roll number has already been claimed." };
   }
 
@@ -243,11 +260,13 @@ export async function completeClaim(
 
     await removeLegacy(legacy.legacyId);
 
+    console.log(`[auth] claim complete -> ok roll=${legacy.roll} uid=${session.uid}`);
     return { ok: true, uid: session.uid };
   } catch (error) {
     // Compensate so a transient failure does not strand the roll number and
     // lock the student out of a retry. The account itself stays (it owns the
     // session), which is safe: no profile or roll points at it yet.
+    console.error("[auth] claim complete failed, compensating", error);
     await releaseRoll(legacy.roll, session.uid).catch(() => undefined);
     await deleteProfileDoc(session.uid).catch(() => undefined);
     throw error;

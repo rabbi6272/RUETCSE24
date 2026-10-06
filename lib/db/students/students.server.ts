@@ -188,6 +188,7 @@ export async function createProfileAction(
   // The cookie's claim can be older than the verification itself (the
   // magic-link flows verify without re-signing), so this gate reads live.
   if (!(await freshEmailVerified(session.uid))) {
+    console.log(`[auth] create-profile -> email-not-verified uid=${session.uid}`);
     return {
       ok: false,
       error:

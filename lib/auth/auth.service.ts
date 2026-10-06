@@ -3,7 +3,7 @@ import "server-only";
 import { adminAuth } from "../firebase/admin";
 import { changePasswordSchema, loginSchema } from "../db/students/students.schema";
 import { removeProfile } from "../db/students/students.admin.repo";
-import { sendOobCode } from "./oob.server";
+import { sendOobCode, maskEmail } from "./oob.server";
 import { clearSessionCookie, createSessionCookie, getSession } from "./session";
 import { verifyPassword } from "./verify-password.server";
 
@@ -39,6 +39,7 @@ export async function signIn(
   const verified = await verifyPassword(email, parsed.data.password);
 
   if (!verified.ok) {
+    console.log(`[auth] signin ${maskEmail(email)} -> bad-password`);
     return { ok: false, error: SIGN_IN_FAILED };
   }
 
@@ -49,6 +50,7 @@ export async function signIn(
 
     if (!session) {
       await clearSessionCookie();
+      console.log(`[auth] signin ${maskEmail(email)} -> no-session`);
       return { ok: false, error: SIGN_IN_FAILED };
     }
 
@@ -57,18 +59,20 @@ export async function signIn(
     // delivery has no separate endpoint or credential. Failures stay silent:
     // the caller only needs to know sign-in worked.
     if (!session.emailVerified) {
-      const sent = await sendOobCode({
+      await sendOobCode({
         requestType: "VERIFY_EMAIL",
         email: session.email,
         idToken: verified.idToken,
         continueUrl: `${(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "")}/profiles/create`,
       });
-      if (!sent.ok) console.error("verification email on sign-in failed", sent.code);
     }
 
     // The claims ride along on the freshly minted session cookie, so the client
     // can send a student straight to the rotation form instead of letting them
     // edit a profile while still on a publicly known password.
+    console.log(
+      `[auth] signin ${maskEmail(email)} -> ok verified=${session.emailVerified} rotate=${session.mustRotate} needsSection=${session.needsSection}`,
+    );
     return {
       ok: true,
       email: session.email,
@@ -77,7 +81,7 @@ export async function signIn(
       needsSection: session.needsSection,
     };
   } catch (error) {
-    console.error("session creation failed", error);
+    console.error("[auth] session creation failed", error);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 }
@@ -123,6 +127,7 @@ export async function changePassword(
   const verified = await verifyPassword(session.email, parsed.data.currentPassword);
 
   if (!verified.ok) {
+    console.log(`[auth] password-change ${maskEmail(session.email)} -> bad-current-password`);
     return { ok: false, error: "Your current password is incorrect." };
   }
 
@@ -132,10 +137,11 @@ export async function changePassword(
     // this one, so other devices are signed out too.
     await adminAuth.revokeRefreshTokens(session.uid);
   } catch (error) {
-    console.error("password change failed", error);
+    console.error("[auth] password change failed", error);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 
+  console.log(`[auth] password-change ${maskEmail(session.email)} -> ok (all sessions revoked)`);
   await clearSessionCookie();
   return { ok: true };
 }
@@ -154,6 +160,7 @@ export async function deleteAccount(currentPassword: string): Promise<PlainResul
   const verified = await verifyPassword(session.email, currentPassword);
 
   if (!verified.ok) {
+    console.log(`[auth] account-delete ${maskEmail(session.email)} -> bad-password`);
     return { ok: false, error: "Your password is incorrect." };
   }
 
@@ -161,15 +168,17 @@ export async function deleteAccount(currentPassword: string): Promise<PlainResul
     await removeProfile(session.uid);
     await adminAuth.deleteUser(session.uid);
   } catch (error) {
-    console.error("account deletion failed", error);
+    console.error("[auth] account deletion failed", error);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 
+  console.log(`[auth] account-delete ${maskEmail(session.email)} -> ok (profile+auth removed)`);
   await clearSessionCookie();
   return { ok: true };
 }
 
 export async function signOut(): Promise<PlainResult> {
   await clearSessionCookie();
+  console.log("[auth] sign-out -> ok (cookie cleared)");
   return { ok: true };
 }

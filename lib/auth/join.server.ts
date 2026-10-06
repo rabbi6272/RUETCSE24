@@ -8,7 +8,7 @@ import {
   type JoinCompleteInput,
 } from "../db/students/students.schema";
 import { findProfileById } from "../db/students/students.admin.repo";
-import { sendOobCode, signInWithOutboundLink } from "./oob.server";
+import { sendOobCode, signInWithOutboundLink, maskEmail } from "./oob.server";
 import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
 import { getSeries } from "../../types/series";
@@ -76,12 +76,14 @@ export async function startJoin(
 
   const entry = getSeries(parsed.data.series);
   if (!entry || entry.status !== "open") {
+    console.log(`[auth] join start ${maskEmail(parsed.data.email)} -> series-${parsed.data.series}-closed`);
     return { ok: false, error: "This series is not accepting new accounts." };
   }
 
   const email = parsed.data.email;
   const now = Date.now();
   const ref = joinSendRef(email);
+  console.log(`[auth] join start ${maskEmail(email)} series=${entry.id} -> eligible`);
 
   // Cooldown so the endpoint cannot be used to mail-bomb an address. A
   // resend inside the window is silently dropped; the previous link stays
@@ -94,15 +96,15 @@ export async function startJoin(
     return true;
   });
 
-  if (canSend) {
-    const sent = await sendOobCode({
+  if (!canSend) {
+    console.log(`[auth] join cooldown ${maskEmail(email)} (resend dropped)`);
+  } else {
+    await sendOobCode({
       requestType: "EMAIL_SIGNIN",
       email,
       continueUrl: joinContinueUrl(entry.id),
       canHandleCodeInApp: true,
     });
-    // A mail failure must not be distinguishable from success either.
-    if (!sent.ok) console.error("join sign-in link failed", email, sent.code);
   }
 
   return { ok: true, message: GENERIC_START_MESSAGE };
@@ -121,6 +123,7 @@ export async function openJoinLink(
   const parsed = joinStartSchema.omit({ series: true }).safeParse({ email: rawEmail });
 
   if (!oobCode || !parsed.success) {
+    console.log("[auth] join link -> invalid-input");
     return { ok: false, error: GENERIC_LINK_MESSAGE };
   }
 
@@ -132,6 +135,7 @@ export async function openJoinLink(
 
   const signedInAs = (exchanged.data.email ?? "").trim().toLowerCase();
   if (signedInAs && signedInAs !== parsed.data.email) {
+    console.log(`[auth] join link -> email-mismatch ${maskEmail(parsed.data.email)}`);
     return { ok: false, error: GENERIC_LINK_MESSAGE };
   }
 
@@ -141,13 +145,14 @@ export async function openJoinLink(
   if (uid) {
     await adminAuth
       .updateUser(uid, { emailVerified: true })
-      .catch((error) => console.error("join verify mark failed", error));
+      .catch((error) => console.error("[auth] join verify mark failed", error));
   }
 
   await createSessionCookie(exchanged.data.idToken);
 
   const session = await getSession();
   if (!session) {
+    console.log("[auth] join link -> no-session after cookie");
     return { ok: false, error: GENERIC_LINK_MESSAGE };
   }
 
@@ -163,6 +168,9 @@ export async function openJoinLink(
     .catch(() => undefined);
 
   const profile = await findProfileById(session.uid);
+  console.log(
+    `[auth] join link -> ok ${maskEmail(parsed.data.email)} hasProfile=${profile !== null}`,
+  );
   return { ok: true, hasProfile: profile !== null };
 }
 
@@ -173,15 +181,17 @@ export async function completeJoin(
   const parsed = joinCompleteSchema.safeParse(input);
 
   if (!parsed.success) {
+    console.log("[auth] join complete -> invalid-input");
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Check your details." };
   }
 
   const session = await getSession();
   if (!session) {
+    console.log("[auth] join complete -> no-session");
     return { ok: false, error: "Your session expired. Start again." };
   }
 
   await adminAuth.updateUser(session.uid, { password: parsed.data.password });
-
+  console.log(`[auth] join complete -> ok uid=${session.uid} (password set)`);
   return { ok: true, uid: session.uid };
 }
