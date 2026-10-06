@@ -36,7 +36,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#1a2421",
+  themeColor: "#fafafa",
 };
 
 export default function RootLayout({
@@ -67,7 +67,7 @@ export default function RootLayout({
     "@context": "https://schema.org",
     "@type": "Organization",
     name: siteConfig.name,
-    alternateName: "RUET CSE 24 Batch",
+    alternateName: "RUET CSE Department",
     url: siteConfig.url,
     logo: new URL(siteConfig.logo, siteUrl).toString(),
     email: siteConfig.email,
@@ -78,14 +78,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link
-          rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css"
-        />
-        <link
-          rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/brands.min.css"
-        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -97,7 +89,21 @@ export default function RootLayout({
       </head>
       <body className={`${lato.className}`}>
         <Providers>
-          <Toaster />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: {
+                background: "#171717",
+                color: "#ffffff",
+                borderRadius: "10px",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                boxShadow: "0 4px 12px rgb(0 0 0 / 0.08), 0 2px 4px rgb(0 0 0 / 0.04)",
+              },
+              success: { iconTheme: { primary: "#ffffff", secondary: "#171717" } },
+              error: { iconTheme: { primary: "#171717", secondary: "#ffffff" } },
+            }}
+          />
           <Analytics />
           {children}
         </Providers>

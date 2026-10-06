@@ -15,21 +15,24 @@ import * as React from "react";
 interface NotificationEmailProps {
   name?: string;
   portalUrl?: string;
+  /** The announcement body written by the admin. */
+  message?: string;
 }
 
 export function EmailBody({
   name = "there",
-  portalUrl = "https://students.ruetcsearchive.app/profile/update",
+  portalUrl = "https://students.ruetcsearchive.app/profiles",
+  message = "Thanks for being with us. This is your update from the RUET CSE web-app.",
 }: NotificationEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Your personalized update from RUET CSE 24</Preview>
+      <Preview>Your personalized update from RUET CSE</Preview>
       <Body style={body}>
         <Container style={container}>
           {/* ── Header ── */}
           <Section style={header}>
-            <Heading style={headerTitle}>RUET CSE 24</Heading>
+            <Heading style={headerTitle}>RUET CSE</Heading>
             <Text style={headerSubtitle}>Personalized notification</Text>
           </Section>
 
@@ -38,10 +41,7 @@ export function EmailBody({
             <Text style={greeting}>
               Hi <strong>{name}</strong>,
             </Text>
-            <Text style={paragraph}>
-              Thanks for being with us. This is your personalized update from
-              the RUET CSE 24 web-app.
-            </Text>
+            <Text style={paragraph}>{message}</Text>
 
             {/* ── Highlighted callout block ── */}
             <Section style={callout}>
@@ -58,7 +58,7 @@ export function EmailBody({
             <Text style={paragraph}>
               Best regards,
               <br />
-              RUET CSE 24 Team
+              RUET CSE Team
             </Text>
 
             {/* ── CTA Button ── */}
@@ -98,7 +98,7 @@ const container: React.CSSProperties = {
 };
 
 const header: React.CSSProperties = {
-  background: "linear-gradient(135deg, #1a7a8a 0%, #00bcd4 100%)",
+  background: "linear-gradient(135deg, #1a2421 0%, #32443d 100%)",
   padding: "32px 40px",
 };
 
@@ -121,7 +121,7 @@ const content: React.CSSProperties = {
 
 const greeting: React.CSSProperties = {
   fontSize: "16px",
-  color: "#1a1a2e",
+  color: "#16211e",
   marginBottom: "8px",
 };
 
@@ -132,8 +132,8 @@ const paragraph: React.CSSProperties = {
 };
 
 const callout: React.CSSProperties = {
-  backgroundColor: "#f0f7ff",
-  borderLeft: "4px solid #1a7a8a",
+  backgroundColor: "#f2f6f4",
+  borderLeft: "4px solid #1a2421",
   borderRadius: "4px",
   padding: "16px 20px",
   margin: "20px 0",
@@ -147,7 +147,7 @@ const calloutText: React.CSSProperties = {
 };
 
 const button: React.CSSProperties = {
-  backgroundColor: "#1a7a8a",
+  backgroundColor: "#1a2421",
   color: "#ffffff",
   padding: "12px 28px",
   borderRadius: "50px",

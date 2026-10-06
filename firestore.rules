@@ -1,0 +1,93 @@
+rules_version = '2';
+
+// RUET CSE 24 Firestore security rules.
+//
+// These rules are the actual enforcement layer. Application code (zod schemas,
+// service-layer ownership checks) produces good error messages; these rules make
+// the guarantees hold even if a client is modified or bypassed.
+//
+// Collections:
+//   profiles/{uid}                    public directory data, gated on `published`
+//   profiles/{uid}/private/{doc}      owner-only in intent, denied to ALL clients
+//   legacyProfiles/{hash}             unclaimed pre-migration profiles, admin only
+//   rateLimits/{hash}                 OTP throttling counters, admin only
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Changing `id` would orphan a profile from its auth account, so it is
+    // pinned rather than merely range-checked.
+    //
+    // `series` is the two-digit roll prefix (see `types/series.ts`). Zod holds
+    // the precise per-series roll pattern — rules can only guard structure, so
+    // the check here is deliberately loose (shape, not registry membership).
+    function validProfile(d) {
+      return d.keys().hasOnly([
+          'fullName', 'nickname', 'email', 'roll', 'series', 'sec', 'bloodGroup',
+          'bio', 'hobby', 'fbProfile', 'profilePicture', 'published',
+          'createdAt', 'updatedAt', 'claimedAt'
+        ])
+        && d.id == request.auth.uid
+        && d.fullName is string && d.fullName.size() >= 2 && d.fullName.size() <= 80
+        && d.nickname is string && d.nickname.size() <= 40
+        && d.email is string && d.email.size() <= 254
+        && d.roll is string && d.roll.size() <= 12
+        && d.series is string && d.series.matches('^[0-9]{2}$')
+        && d.sec in ['a', 'b', 'c']
+        && d.bloodGroup is string && d.bloodGroup.size() <= 8
+        && d.bio is string && d.bio.size() <= 500
+        && d.hobby is string && d.hobby.size() <= 60
+        && d.fbProfile is string && d.fbProfile.size() <= 600
+        && d.profilePicture is map
+        && d.profilePicture.keys().hasOnly(['publicId', 'url'])
+        && d.published is bool
+        && d.createdAt is int && d.createdAt >= 0
+        && d.updatedAt is int && d.updatedAt >= 0
+        && d.claimedAt is int && d.claimedAt >= 0;
+    }
+
+    // Public directory. Readable by anyone while the student has opted in, and
+    // always by the owner so they can edit their own profile; writable only by
+    // the owner the document is named after.
+    match /profiles/{uid} {
+      allow read: if resource.data.published == true || isOwner(uid);
+      allow create: if isOwner(uid) && validProfile(request.resource);
+      allow update: if isOwner(uid) && validProfile(request.resource);
+      allow delete: if isOwner(uid);
+
+      // Mobile number. Deliberately unreachable from any client — the only way
+      // to read or write it is through the Admin SDK in server code.
+      match /private/{doc} {
+        allow read, write: if false;
+      }
+    }
+
+    // Unclaimed pre-migration profiles and OTP rate-limit counters. Both are
+    // reachable only via firebase-admin.
+    match /legacyProfiles/{doc} {
+      allow read, write: if false;
+    }
+
+    match /rateLimits/{doc} {
+      allow read, write: if false;
+    }
+
+    // Roll-number reservation, so one student cannot claim two identities.
+    match /rollIndex/{doc} {
+      allow read, write: if false;
+    }
+
+    // Default deny. Any collection added later is private until explicitly
+    // granted above, so a new feature cannot leak data by omission.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

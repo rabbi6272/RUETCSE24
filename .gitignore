@@ -13,6 +13,7 @@ dist/
 .idea/
 *.log
 *.lock
+!yarn.lock
 *.tsbuildinfo
 coverage/
 *.zip
@@ -23,3 +24,9 @@ coverage/
 *.swp
 *.swo
 *.swn
+
+# Firestore exports. These contain every document in the project, including the
+# legacy plaintext pincode values and real email addresses, so they must never
+# reach git. scripts/export-firestore.ts refuses to run unless these are ignored.
+backup.json
+backups/

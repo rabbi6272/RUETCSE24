@@ -6,7 +6,7 @@ import { createMetadata } from "../seo";
 export const metadata: Metadata = createMetadata({
   title: "RUET Student Profiles",
   description:
-    "Browse the RUET CSE 24 student profile directory by name, roll, section, email, and contact information.",
+    "Browse the RUET CSE student profile directory by name, roll, section, and email address.",
   path: "/profiles",
 });
 

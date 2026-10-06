@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { SERIES } from "../types/series";
 import { absoluteUrl } from "./seo";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -12,11 +13,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 1,
     },
-    {
-      url: absoluteUrl("/profiles"),
+    ...SERIES.map((entry) => ({
+      url: absoluteUrl(`/s/${entry.id}`),
       lastModified: now,
-      changeFrequency: "daily",
+      changeFrequency: "daily" as const,
       priority: 0.9,
-    },
+    })),
   ];
 }

@@ -417,9 +417,9 @@ export default function HomePageClient(): React.ReactElement {
       `}</style>
 
       <Link
-        href="/profiles"
-        className="profiles-button fixed top-5 right-5 w-13 h-13 flex items-center justify-center bg-blue-600 text-white rounded-full no-underline text-2xl shadow-lg hover:bg-blue-700 transition-colors z-99999"
-        aria-label="Browse RUET CSE 24 student profiles"
+        href="#directory"
+        className="profiles-button fixed top-20 right-5 w-13 h-13 flex items-center justify-center bg-blue-600 text-white rounded-full no-underline text-2xl shadow-lg hover:bg-blue-700 transition-colors z-99999"
+        aria-label="Browse student profiles"
       >
         <Users size={20} />
       </Link>

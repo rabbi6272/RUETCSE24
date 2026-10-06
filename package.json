@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "backup:firestore": "node --env-file=.env --import tsx scripts/export-firestore.ts",
+    "migrate:profiles": "node --env-file=.env --import tsx scripts/migrate-legacy-profiles.ts",
+    "backfill:series": "node --env-file=.env --import tsx scripts/backfill-series.ts"
   },
   "dependencies": {
     "@heroui/react": "^3.0.0-beta.5",
@@ -16,15 +19,19 @@
     "@vercel/analytics": "^1.6.1",
     "browser-image-compression": "^2.0.2",
     "cloudinary": "^2.9.0",
+    "eslint-config-next": "^16.3.8",
     "firebase": "^12.8.0",
+    "firebase-admin": "^13.10.0",
     "lucide-react": "^0.563.0",
-    "next": "^15.3.3",
+    "next": "^16.3.8",
     "next-cloudinary": "^6.17.5",
-    "react": "latest",
-    "react-dom": "latest",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-hot-toast": "^2.6.0",
     "resend": "^6.10.0",
+    "server-only": "^0.0.1",
     "sharp": "^0.34.5",
+    "zod": "^4.6.5",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

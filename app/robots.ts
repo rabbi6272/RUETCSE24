@@ -13,7 +13,10 @@ export default function robots(): MetadataRoute.Robots {
           "/email-services",
           "/profiles/create",
           "/profiles/update",
-          "/profiles/forgot-pincode",
+          "/profiles/forgot-password",
+          // Individually addressable profiles are client-rendered and carry a
+          // noindex directive of their own.
+          "/profiles/",
         ],
       },
     ],

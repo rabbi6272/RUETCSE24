@@ -4,7 +4,7 @@ import { createMetadata } from "../seo";
 
 export const metadata: Metadata = createMetadata({
   title: "Email Services",
-  description: "Internal email tools for RUET CSE 24.",
+  description: "Internal email tools for RUET CSE.",
   path: "/email-services",
   noIndex: true,
 });
