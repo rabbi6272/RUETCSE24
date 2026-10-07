@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
-import { lato } from "./ui/fonts";
+import { nunito } from "./ui/fonts";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "./providers";
 import { createMetadata, siteConfig, siteUrl } from "./seo";
@@ -87,7 +87,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationData) }}
         />
       </head>
-      <body className={`${lato.className}`}>
+      <body className={`${nunito.variable} ${nunito.className}`}>
         <Providers>
           <Toaster
             position="top-center"

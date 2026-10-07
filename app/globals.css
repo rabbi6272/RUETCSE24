@@ -62,7 +62,7 @@
   /* One easing curve, so motion feels like one system. */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --font-sans: var(--font-lato), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
 
   /* Retained for the home page, which is out of scope for this redesign. */
   --animate-fade: fade 1s ease-in-out;

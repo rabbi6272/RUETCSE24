@@ -12,6 +12,8 @@ import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Alert, Check } from "../ui/Icon";
 
+import { SpamNotice } from "./SpamNotice";
+
 /**
  * Shown wherever a mutation needs a session. Deliberately not a route: both the
  * create and update pages need it inline, and a redirect would lose the visitor's
@@ -97,6 +99,8 @@ export function SignInPanel({ context }: { context: string }) {
             Open it and you&apos;ll land on your profile — no further sign-in
             needed.
           </p>
+
+          <SpamNotice className="mt-5" />
 
           {verifyNotice ? (
             <p className="mt-5 flex items-start gap-2 rounded-control border border-border bg-surface-sunken px-3 py-2.5 text-sm text-fg-muted">

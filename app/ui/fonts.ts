@@ -1,11 +1,4 @@
 import LocalFont from "next/font/local";
-import { Nunito, Lato } from "next/font/google";
-
-export const anonymous = LocalFont({
-  src: "AnonymousPro.ttf",
-  display: "swap",
-  preload: true,
-});
 
 export const changaone = LocalFont({
   src: "ChangaOne.ttf",
@@ -13,16 +6,11 @@ export const changaone = LocalFont({
   preload: true,
 });
 
-export const nunito = Nunito({
+// Variable font (wght 200–1000), so one file covers every weight.
+export const nunito = LocalFont({
+  src: "Nunito.ttf",
+  weight: "200 1000",
   display: "swap",
   preload: true,
-  subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
-});
-
-export const lato = Lato({
-  subsets: ["latin"],
-  weight: ["100", "300", "400", "700", "900"],
-  display: "swap",
-  preload: true,
+  variable: "--font-nunito",
 });

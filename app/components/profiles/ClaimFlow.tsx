@@ -10,11 +10,14 @@ import {
   openClaimLinkAction,
   startClaimAction,
 } from "../../../lib/db/students/students.server";
+import { SECTION_LABELS } from "../../../types/Student";
 
 import { Button } from "../ui/Button";
-import { TextField } from "../ui/Field";
+import { SelectField, TextField } from "../ui/Field";
 import { Alert, Check } from "../ui/Icon";
 import { cn } from "../ui/cn";
+
+import { SpamNotice } from "./SpamNotice";
 
 type Step = "email" | "link" | "password";
 
@@ -22,6 +25,8 @@ const EMAIL_STORAGE_KEY = "claimEmailForSignIn";
 
 /**
  * Three steps: find your entry, open the emailed sign-in link, set a password.
+ * Migrated accounts that still sign in with their old pincode come through
+ * here too ("activate"); they may also be asked to confirm their section.
  *
  * The link is a Firebase EMAIL_SIGNIN OOB code exchanged server-side, so the
  * client never holds a credential — it only relays the `oobCode` from the
@@ -35,6 +40,8 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
   const [email, setEmail] = useState("");
   const [linkEmail, setLinkEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [needsSection, setNeedsSection] = useState(false);
+  const [sec, setSec] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -103,6 +110,7 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
         // The code is single-use: strip it so a refresh at the password step
         // cannot try to replay it.
         window.history.replaceState({}, "", "/profiles/claim");
+        setNeedsSection(result.needsSection);
         setNotice("Email verified. Choose a password to finish claiming.");
         setStep("password");
       } else {
@@ -126,6 +134,8 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
     if (!result) return fail("Could not open the link. Try again.");
     if (!result.ok) return fail(result.error);
 
+    setNeedsSection(result.needsSection);
+
     try {
       sessionStorage.setItem(EMAIL_STORAGE_KEY, linkEmail.trim().toLowerCase());
     } catch {
@@ -142,7 +152,11 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
     setBusy(true);
     setError(null);
 
-    const result = await completeClaimAction(password).catch(() => null);
+    if (needsSection && !sec) return fail("Pick your section.");
+
+    const result = await completeClaimAction(password, needsSection ? sec : undefined).catch(
+      () => null,
+    );
 
     if (!result) return fail("Could not finish the claim. Try again.");
     if (!result.ok) return fail(result.error);
@@ -257,6 +271,7 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
                 Check your inbox and open the link — it brings you back here to
                 set a password.
               </p>
+              <SpamNotice />
               <button
                 type="button"
                 onClick={() => {
@@ -274,6 +289,23 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
 
         {step === "password" ? (
           <form onSubmit={onComplete} className="mt-6 space-y-4" noValidate>
+            {needsSection ? (
+              <SelectField
+                label="Your section"
+                hint="We worked this out from your roll number — please confirm it."
+                name="sec"
+                value={sec}
+                onChange={(event) => setSec(event.target.value)}
+                required
+              >
+                <option value="">Select your section</option>
+                {(["a", "b", "c"] as const).map((value) => (
+                  <option key={value} value={value}>
+                    {SECTION_LABELS[value]}
+                  </option>
+                ))}
+              </SelectField>
+            ) : null}
             <TextField
               label="Choose a password"
               type="password"

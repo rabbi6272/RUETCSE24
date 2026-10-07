@@ -10,7 +10,12 @@ import {
   signIn,
   signOut,
 } from "../../auth/auth.service";
-import { completeClaim, openClaimLink, startClaim } from "../../auth/claim.server";
+import {
+  completeClaim,
+  openClaimLink,
+  startClaim,
+  type ClaimLinkResult,
+} from "../../auth/claim.server";
 import { completeJoin, openJoinLink, startJoin } from "../../auth/join.server";
 import { completePasswordRotation } from "../../auth/rotation.server";
 import { freshEmailVerified, resendVerification } from "../../auth/verification.server";
@@ -115,12 +120,18 @@ export async function startClaimAction(
 export async function openClaimLinkAction(
   oobCode: string,
   email: string,
-): Promise<PlainResult> {
+): Promise<ClaimLinkResult> {
   return openClaimLink(oobCode, email);
 }
 
-export async function completeClaimAction(password: string): Promise<Result<{ uid: string }>> {
-  const result = await completeClaim({ password });
+export async function completeClaimAction(
+  password: string,
+  sec?: string,
+): Promise<Result<{ uid: string }>> {
+  const result = await completeClaim({
+    password,
+    ...(sec ? { sec: sec as "a" | "b" | "c" } : {}),
+  });
 
   if (result.ok) revalidateProfiles();
 

@@ -35,6 +35,38 @@ function verificationContinueUrl(): string {
   return `${base.replace(/\/+$/, "")}/profiles/create`;
 }
 
+/**
+ * Mints a current idToken for `uid` without any credential of the user's: a
+ * custom token exchanged over Identity Toolkit. Returns null on failure.
+ */
+export async function idTokenForUid(uid: string): Promise<string | null> {
+  const customToken = await adminAuth.createCustomToken(uid);
+
+  const exchange = await fetch(
+    `${BASE}/accounts:signInWithCustomToken?key=${getApiKey()}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: customToken, returnSecureToken: true }),
+      cache: "no-store",
+    },
+  );
+  const data = (await exchange.json().catch(() => ({}))) as {
+    idToken?: string;
+    error?: { message?: string };
+  };
+
+  if (!exchange.ok || !data.idToken) {
+    console.error(
+      "[auth] custom token exchange failed",
+      data.error?.message ?? exchange.status,
+    );
+    return null;
+  }
+
+  return data.idToken;
+}
+
 /** Live verification state — never the cookie claim. */
 export async function freshEmailVerified(uid: string): Promise<boolean> {
   try {
@@ -63,34 +95,16 @@ export async function resendVerification(): Promise<
   }
 
   try {
-    const customToken = await adminAuth.createCustomToken(session.uid);
+    const idToken = await idTokenForUid(session.uid);
 
-    const exchange = await fetch(
-      `${BASE}/accounts:signInWithCustomToken?key=${getApiKey()}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: customToken, returnSecureToken: true }),
-        cache: "no-store",
-      },
-    );
-    const data = (await exchange.json().catch(() => ({}))) as {
-      idToken?: string;
-      error?: { message?: string };
-    };
-
-    if (!exchange.ok || !data.idToken) {
-      console.error(
-        "[auth] verification token exchange failed",
-        data.error?.message ?? exchange.status,
-      );
+    if (!idToken) {
       return { ok: false, error: "Something went wrong. Please try again." };
     }
 
     const sent = await sendOobCode({
       requestType: "VERIFY_EMAIL",
       email: session.email,
-      idToken: data.idToken,
+      idToken,
       continueUrl: verificationContinueUrl(),
     });
 

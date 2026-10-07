@@ -9,6 +9,7 @@ import {
 } from "../db/students/students.schema";
 import {
   deleteProfileDoc,
+  patchProfile,
   findLegacyByEmail,
   findProfileByRoll,
   releaseRoll,
@@ -20,6 +21,7 @@ import {
 import { sendOobCode, signInWithOutboundLink, maskEmail } from "./oob.server";
 import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
+import { idTokenForUid } from "./verification.server";
 import { seriesFromRoll } from "../../types/series";
 
 import type { LegacyProfile, Profile } from "../../types/Student";
@@ -39,6 +41,12 @@ import type { LegacyProfile, Profile } from "../../types/Student";
  *  - eligibility (legacy entry exists, no account yet, roll unheld) is decided
  *    server-side at both send and completion, never trusted from the client;
  *  - a resend cooldown, so the endpoint cannot be used to mail-bomb an address.
+ *
+ * Seeded accounts (created by `scripts/seed-auth-users.ts` with the old
+ * pincode as password and `mustRotate` still set) are "activated" through the
+ * same three steps: the link proves the mailbox, then the student sets a real
+ * password and the bootstrap claims are cleared. Their profile already exists,
+ * so nothing is carried over.
  */
 
 const GENERIC_START_MESSAGE =
@@ -68,6 +76,24 @@ function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * A seeded account that has never replaced its bootstrap pincode. `null` for
+ * unknown addresses and for accounts that are already activated.
+ */
+async function pendingActivation(
+  email: string,
+): Promise<{ uid: string; needsSection: boolean } | null> {
+  try {
+    const user = await adminAuth.getUserByEmail(email);
+    const claims = user.customClaims ?? {};
+    if (claims.mustRotate !== true) return null;
+    return { uid: user.uid, needsSection: claims.needsSection === true };
+  } catch (error) {
+    if ((error as { code?: string }).code === "auth/user-not-found") return null;
+    throw error;
+  }
+}
+
 async function authEmailExists(email: string): Promise<boolean> {
   try {
     await adminAuth.getUserByEmail(email);
@@ -86,14 +112,17 @@ export async function startClaim(rawEmail: string): Promise<Result<{ message: st
   }
 
   const email = parsed.data.email;
-  const legacy = await findLegacyByEmail(email);
+  const activation = await pendingActivation(email);
+  const legacy = activation ? null : await findLegacyByEmail(email);
 
   // Eligibility is decided here and never disclosed to the caller. The roll
   // must belong to a registered series, or the claimed profile could not be
   // filed into any directory. The logged `deny` reason is the operator's
   // window into why an address was silently skipped.
   let deny: string | null = null;
-  if (!legacy) {
+  if (activation) {
+    deny = null;
+  } else if (!legacy) {
     deny = "no-legacy";
   } else if (seriesFromRoll(legacy.roll) === null) {
     deny = "bad-series";
@@ -108,7 +137,9 @@ export async function startClaim(rawEmail: string): Promise<Result<{ message: st
   }
 
   const eligible = deny === null;
-  console.log(`[auth] claim start ${maskEmail(email)} -> ${deny ?? "eligible"}`);
+  console.log(
+    `[auth] claim start ${maskEmail(email)} -> ${deny ?? (activation ? "eligible (activate)" : "eligible")}`,
+  );
 
   if (eligible) {
     const now = Date.now();
@@ -145,10 +176,14 @@ export async function startClaim(rawEmail: string): Promise<Result<{ message: st
  * the address from its own state (or re-enters it on another device); the
  * Identity Toolkit endpoint binds code and address, so a wrong pairing fails.
  */
+export type ClaimLinkResult =
+  | { ok: true; mode: "claim" | "activate"; needsSection: boolean }
+  | { ok: false; error: string };
+
 export async function openClaimLink(
   rawOobCode: string,
   rawEmail: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<ClaimLinkResult> {
   const oobCode = rawOobCode.trim();
   const parsed = claimStartSchema.safeParse({ email: rawEmail });
 
@@ -169,6 +204,15 @@ export async function openClaimLink(
     return { ok: false, error: GENERIC_LINK_MESSAGE };
   }
 
+  // A seeded account needs no legacy entry: its profile and roll are already
+  // its own, and the link is the proof the pincode never was.
+  const activation = await pendingActivation(parsed.data.email);
+  if (activation) {
+    await createSessionCookie(exchanged.data.idToken);
+    console.log(`[auth] claim link -> ok (activate) ${maskEmail(parsed.data.email)}`);
+    return { ok: true, mode: "activate", needsSection: activation.needsSection };
+  }
+
   // The link proves mailbox control, but eligibility is still ours to decide:
   // the legacy entry must exist and its roll must still be unheld.
   const legacy = await findLegacyByEmail(parsed.data.email);
@@ -183,7 +227,7 @@ export async function openClaimLink(
 
   await createSessionCookie(exchanged.data.idToken);
   console.log(`[auth] claim link -> ok ${maskEmail(parsed.data.email)} (session opened)`);
-  return { ok: true };
+  return { ok: true, mode: "claim", needsSection: false };
 }
 
 function legacyToProfile(legacy: LegacyProfile, uid: string, now: number): Profile {
@@ -224,6 +268,10 @@ export async function completeClaim(
   if (!session) {
     console.log("[auth] claim complete -> no-session");
     return { ok: false, error: "Your claim session expired. Start again." };
+  }
+
+  if (session.mustRotate) {
+    return completeActivation(session, parsed.data);
   }
 
   // Bound to the mailbox the link verified — never to client-supplied input.
@@ -271,4 +319,58 @@ export async function completeClaim(
     await deleteProfileDoc(session.uid).catch(() => undefined);
     throw error;
   }
+}
+
+/**
+ * Final step for a seeded account: replace the bootstrap pincode, clear the
+ * `mustRotate`/`needsSection` claims, and re-open the session so the student
+ * lands signed in. Ordered like `completePasswordRotation`: the idempotent
+ * profile write first, the claims cleared only once the password is in place.
+ */
+async function completeActivation(
+  session: { uid: string; email: string; needsSection: boolean },
+  input: ClaimCompleteInput,
+): Promise<Result<{ uid: string }>> {
+  if (session.needsSection && !input.sec) {
+    console.log(`[auth] claim complete -> missing-section uid=${session.uid}`);
+    return { ok: false, error: "Pick your section." };
+  }
+
+  try {
+    if (session.needsSection && input.sec) {
+      await patchProfile(session.uid, { sec: input.sec });
+    }
+
+    await adminAuth.updateUser(session.uid, {
+      password: input.password,
+      emailVerified: true,
+    });
+    await adminAuth.setCustomUserClaims(session.uid, null);
+
+    // Kills any session still signed in with the public pincode, this one
+    // included; a fresh cookie is minted below.
+    await adminAuth.revokeRefreshTokens(session.uid);
+  } catch (error) {
+    console.error("[auth] claim complete (activate) failed", error);
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+
+  // The seeded copy of the legacy entry is now redundant; leaving it would keep
+  // the student counted as unclaimed. Best effort — the account is done.
+  const legacy = await findLegacyByEmail(session.email).catch(() => null);
+  if (legacy) {
+    await removeLegacy(legacy.legacyId).catch((error) =>
+      console.error("[auth] claim complete (activate) legacy cleanup failed", error),
+    );
+  }
+
+  const idToken = await idTokenForUid(session.uid).catch(() => null);
+  if (idToken) {
+    await createSessionCookie(idToken);
+  } else {
+    console.error(`[auth] claim complete (activate) re-sign-in failed uid=${session.uid}`);
+  }
+
+  console.log(`[auth] claim complete -> ok (activate) uid=${session.uid}`);
+  return { ok: true, uid: session.uid };
 }

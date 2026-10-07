@@ -39,9 +39,19 @@ export function DirectoryHeader({ entry }: { entry: SeriesConfig }) {
           </p>
         </div>
 
-        <Link href="/profiles/create" className={buttonClasses("primary", "sm", "shrink-0")}>
-          Create profile
-        </Link>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {entry.status === "open" ? (
+            <Link href={`/s/${entry.id}/join`} className={buttonClasses("primary", "sm")}>
+              Create account
+            </Link>
+          ) : null}
+          <Link
+            href="/profiles/update"
+            className={buttonClasses(entry.status === "open" ? "secondary" : "primary", "sm")}
+          >
+            Sign in
+          </Link>
+        </div>
       </div>
 
       {showClaimCallout ? (

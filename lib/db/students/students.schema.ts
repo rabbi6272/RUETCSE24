@@ -169,7 +169,7 @@ export const joinCompleteSchema = z
   .strict();
 
 export const claimCompleteSchema = z
-  .object({ password: passwordSchema })
+  .object({ password: passwordSchema, sec: sectionSchema.optional() })
   .strict();
 
 export const changePasswordSchema = z

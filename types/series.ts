@@ -28,8 +28,6 @@ export interface SeriesConfig {
   status: "open" | "archived";
   /** Only series 24 has pre-migration legacy profiles and the claim flow. */
   hasLegacyClaims: boolean;
-  /** Only series 24 keeps the original batch-archive home hero. */
-  hasArchiveHome: boolean;
 }
 
 /** 60 students per section for the modern roll shape. */
@@ -76,7 +74,6 @@ export const SERIES: readonly SeriesConfig[] = [
     sectionFromRoll: sectionsFor("2503"),
     status: "open",
     hasLegacyClaims: false,
-    hasArchiveHome: false,
   },
   {
     id: "24",
@@ -87,7 +84,6 @@ export const SERIES: readonly SeriesConfig[] = [
     sectionFromRoll: sectionFromRoll24,
     status: "open",
     hasLegacyClaims: true,
-    hasArchiveHome: true,
   },
   // Historical entries below share the same roll shape (`YY` + `03` + serial).
   // VERIFY against real roll numbers before these series hold real data —
@@ -101,7 +97,6 @@ export const SERIES: readonly SeriesConfig[] = [
     sectionFromRoll: sectionsFor("2303"),
     status: "open",
     hasLegacyClaims: false,
-    hasArchiveHome: false,
   },
   {
     id: "22",
@@ -112,7 +107,6 @@ export const SERIES: readonly SeriesConfig[] = [
     sectionFromRoll: sectionsFor("2203"),
     status: "open",
     hasLegacyClaims: false,
-    hasArchiveHome: false,
   },
   {
     id: "21",
@@ -123,7 +117,6 @@ export const SERIES: readonly SeriesConfig[] = [
     sectionFromRoll: sectionsFor("2103"),
     status: "open",
     hasLegacyClaims: false,
-    hasArchiveHome: false,
   },
   {
     id: "20",
@@ -134,7 +127,6 @@ export const SERIES: readonly SeriesConfig[] = [
     sectionFromRoll: sectionsFor("2003"),
     status: "open",
     hasLegacyClaims: false,
-    hasArchiveHome: false,
   },
 ];
 

@@ -101,7 +101,7 @@ export function ProfileDirectory({
   if (!entry) return null;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+    <div className="mx-auto w-full xl:max-w-[80%] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <DirectoryHeader entry={entry} />
 
       {profiles ? (
@@ -147,9 +147,11 @@ export function ProfileDirectory({
               title="No profiles yet"
               description="Be the first to add a profile to the directory."
               action={
-                <Link href="/profiles/create" className={buttonClasses("primary", "sm")}>
-                  Create profile
-                </Link>
+                entry.status === "open" ? (
+                  <Link href={`/s/${entry.id}/join`} className={buttonClasses("primary", "sm")}>
+                    Create account
+                  </Link>
+                ) : undefined
               }
             />
           )
@@ -158,7 +160,7 @@ export function ProfileDirectory({
         {profiles && filtered.length > 0 ? (
           <>
             <ul
-              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
               aria-busy={isFetching || undefined}
             >
               {filtered.map((profile) => (

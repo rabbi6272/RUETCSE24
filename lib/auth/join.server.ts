@@ -11,6 +11,7 @@ import { findProfileById } from "../db/students/students.admin.repo";
 import { sendOobCode, signInWithOutboundLink, maskEmail } from "./oob.server";
 import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
+import { idTokenForUid } from "./verification.server";
 import { getSeries } from "../../types/series";
 
 /**
@@ -192,6 +193,22 @@ export async function completeJoin(
   }
 
   await adminAuth.updateUser(session.uid, { password: parsed.data.password });
+
+  // A seeded series-24 account that came in through Join instead of Claim: the
+  // link proved the mailbox and the pincode is now replaced, so lift the
+  // rotation gate, end any pincode sessions, and re-open this one.
+  if (session.mustRotate) {
+    await adminAuth.setCustomUserClaims(session.uid, null);
+    await adminAuth.revokeRefreshTokens(session.uid);
+
+    const idToken = await idTokenForUid(session.uid).catch(() => null);
+    if (idToken) await createSessionCookie(idToken);
+    else console.error(`[auth] join complete re-sign-in failed uid=${session.uid}`);
+
+    console.log(`[auth] join complete -> ok uid=${session.uid} (password set, activated)`);
+    return { ok: true, uid: session.uid };
+  }
+
   console.log(`[auth] join complete -> ok uid=${session.uid} (password set)`);
   return { ok: true, uid: session.uid };
 }

@@ -32,17 +32,17 @@ export function ProfileCard({ profile, className }: ProfileCardProps) {
       href={href}
       className={cn(
         "group relative flex h-full flex-col rounded-card border border-border bg-surface p-4",
-        "shadow-card transition-[box-shadow,border-color,transform] duration-250",
-        "hover:-translate-y-0.5 hover:border-ink-300 hover:shadow-raised",
+        "shadow-card transition-[box-shadow,border-color,transform] duration-350",
+        "hover:-translate-y-0.5 hover:border-ink-400 hover:shadow-raised",
         "focus-visible:-translate-y-0.5 focus-visible:border-ink-300",
         className,
       )}
     >
       <div className="flex items-start gap-3">
-        <Avatar name={fullName} src={profilePicture?.url} size="lg" />
+        <Avatar name={fullName} src={profilePicture?.url} size="md" />
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[0.9375rem] font-bold leading-snug text-fg">
+          <h3 className="truncate text-[1.0625rem] font-semibold leading-snug text-fg">
             {fullName}
           </h3>
           {nickname ? (

@@ -10,6 +10,8 @@ import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Alert } from "../ui/Icon";
 
+import { SpamNotice } from "./SpamNotice";
+
 /**
  * Always reports the same outcome regardless of whether the address exists, so
  * this form cannot be used to test whether someone is registered.
@@ -54,9 +56,9 @@ export function ForgotPasswordFlow() {
               role="status"
               className="rounded-control border border-border bg-success-soft px-3 py-2.5 text-sm font-medium text-success"
             >
-              If an account exists for {email}, a reset link is on its way. Check
-              your spam folder if it does not arrive within a few minutes.
+              If an account exists for {email}, a reset link is on its way.
             </p>
+            <SpamNotice />
             <Link
               href="/profiles/update"
               className="block text-sm font-semibold text-ink-700 underline-offset-4 hover:underline"

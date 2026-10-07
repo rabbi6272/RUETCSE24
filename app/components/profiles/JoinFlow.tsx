@@ -16,6 +16,8 @@ import { TextField } from "../ui/Field";
 import { Alert, Check } from "../ui/Icon";
 import { cn } from "../ui/cn";
 
+import { SpamNotice } from "./SpamNotice";
+
 type Step = "email" | "link" | "password";
 
 const EMAIL_STORAGE_KEY = "joinEmailForLink";
@@ -290,6 +292,7 @@ export function JoinFlow({
                 Check your inbox and open the link — it brings you back here to
                 choose a password.
               </p>
+              <SpamNotice />
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <button
                   type="button"
