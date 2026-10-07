@@ -87,10 +87,12 @@ the last one gates both claim and join; if disabled, sends fail with
 `OPERATION_NOT_ALLOWED` and the failure shows up as `[auth] oob EMAIL_SIGNIN … -> <code>`
 in the logs.
 
-`continueUrl` bases, in priority order: `NEXT_PUBLIC_SITE_URL` → production fallback
-`https://ruetcsearchive.app` → `http://localhost:3000`. **Production email tests require
-`NEXT_PUBLIC_SITE_URL=https://ruetcse24-new.vercel.app` in Vercel** (the custom domain is
-parked) **plus that domain added to Firebase Auth → Authorized domains.**
+`continueUrl` base comes from `siteBaseUrl()` (`lib/site-url.ts`), in priority order:
+`NEXT_PUBLIC_SITE_URL` → on Vercel production `VERCEL_PROJECT_PRODUCTION_URL` → on Vercel
+preview `VERCEL_BRANCH_URL`/`VERCEL_URL` → `http://localhost:3000`. The Host header is never used
+(client-controlled, and these links carry sign-in codes). **Whatever domain it resolves to must be
+in Firebase Auth → Settings → Authorized domains.** To get deployed-site links while running
+locally, set `NEXT_PUBLIC_SITE_URL` in `.env`.
 
 ---
 

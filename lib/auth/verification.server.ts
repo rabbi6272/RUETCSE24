@@ -3,6 +3,7 @@ import "server-only";
 import { adminAuth } from "../firebase/admin";
 import { sendOobCode, maskEmail } from "./oob.server";
 import { getSession } from "./session";
+import { siteUrlFor } from "../site-url";
 
 /**
  * Email verification, server-side.
@@ -26,13 +27,8 @@ function getApiKey(): string {
   return key;
 }
 
-function verificationContinueUrl(): string {
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.NODE_ENV === "production"
-      ? "https://ruetcsearchive.app"
-      : "http://localhost:3000");
-  return `${base.replace(/\/+$/, "")}/profiles/create`;
+export function verificationContinueUrl(): string {
+  return siteUrlFor("/profiles/create");
 }
 
 /**

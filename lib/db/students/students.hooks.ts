@@ -8,6 +8,7 @@ import {
   createProfileAction,
   getMyContactAction,
   getMyProfileAction,
+  getViewerSessionAction,
   getUnclaimedCountAction,
   signInAction,
   signOutAction,
@@ -35,6 +36,7 @@ export const studentsKeys = {
   detail: (id: string) => [...studentsKeys.all, "detail", id] as const,
   unclaimedCount: () => [...studentsKeys.all, "unclaimed-count"] as const,
   viewer: () => [...studentsKeys.all, "viewer"] as const,
+  session: () => [...studentsKeys.all, "session"] as const,
   contact: () => [...studentsKeys.all, "contact"] as const,
 };
 
@@ -95,6 +97,17 @@ export function useUnclaimedCount(enabled = true) {
  * a prop so the decision survives navigation without a server round trip per
  * page, and so signing out clears it along with everything else.
  */
+/** The signed-in account (`{ email }`), or `null` when signed out. */
+export function useViewerSession() {
+  return useQuery({
+    queryKey: studentsKeys.session(),
+    queryFn: getViewerSessionAction,
+    // Always re-check: Join/Claim sign the user in via a full redirect, and a
+    // cached "signed out" would show them the sign-in panel again.
+    staleTime: 0,
+  });
+}
+
 export function useViewerProfile() {
   return useQuery({
     queryKey: studentsKeys.viewer(),

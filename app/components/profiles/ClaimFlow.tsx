@@ -17,7 +17,7 @@ import { SelectField, TextField } from "../ui/Field";
 import { Alert, Check } from "../ui/Icon";
 import { cn } from "../ui/cn";
 
-import { SpamNotice } from "./SpamNotice";
+import { EmailSentPanel } from "./EmailSentPanel";
 
 type Step = "email" | "link" | "password";
 
@@ -69,9 +69,24 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
       // simply asks for the address again.
     }
 
-    setNotice(result.message);
+    setNotice(null);
     setStep("link");
     setBusy(false);
+  }
+
+  async function onResend(): Promise<boolean> {
+    setError(null);
+    const result = await startClaimAction(email).catch(() => null);
+
+    if (!result) {
+      setError("Could not resend the link. Try again.");
+      return false;
+    }
+    if (!result.ok) {
+      setError(result.error);
+      return false;
+    }
+    return true;
   }
 
   // The email link lands back on this page with `oobCode` in the URL. Exchange
@@ -242,7 +257,7 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
               onChange={(event) => setEmail(event.target.value)}
               hint="The address your old profile was saved under."
             />
-            <Button type="submit" busy={busy} className="w-full">
+            <Button type="submit" busy={busy} busyLabel="Sending link…" className="w-full">
               Send sign-in link
             </Button>
           </form>
@@ -261,29 +276,21 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
                 onChange={(event) => setLinkEmail(event.target.value)}
                 hint="Only needed when opening the link on another device."
               />
-              <Button type="submit" busy={busy} className="w-full">
+              <Button type="submit" busy={busy} busyLabel="Verifying…" className="w-full">
                 Open link
               </Button>
             </form>
           ) : (
-            <div className="mt-6 space-y-4">
-              <p className="rounded-control border border-border bg-surface-sunken px-3 py-2.5 text-sm text-fg-muted">
-                Check your inbox and open the link — it brings you back here to
-                set a password.
-              </p>
-              <SpamNotice />
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("email");
-                  setError(null);
-                  setNotice(null);
-                }}
-                className="text-sm font-semibold text-ink-700 underline-offset-4 hover:underline"
-              >
-                Use a different email
-              </button>
-            </div>
+            <EmailSentPanel
+              email={email.trim().toLowerCase()}
+              body="If it matches a profile waiting to be claimed, the link brings you back here to set a password."
+              onResend={onResend}
+              onChangeEmail={() => {
+                setStep("email");
+                setError(null);
+                setNotice(null);
+              }}
+            />
           )
         ) : null}
 
@@ -315,7 +322,7 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
               onChange={(event) => setPassword(event.target.value)}
               hint="At least 8 characters."
             />
-            <Button type="submit" busy={busy} className="w-full">
+            <Button type="submit" busy={busy} busyLabel="Claiming…" className="w-full">
               Claim profile
             </Button>
           </form>

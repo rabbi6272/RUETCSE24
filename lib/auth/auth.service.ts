@@ -6,6 +6,7 @@ import { removeProfile } from "../db/students/students.admin.repo";
 import { sendOobCode, maskEmail } from "./oob.server";
 import { clearSessionCookie, createSessionCookie, getSession } from "./session";
 import { verifyPassword } from "./verify-password.server";
+import { verificationContinueUrl } from "./verification.server";
 
 /**
  * Password and account lifecycle.
@@ -63,7 +64,7 @@ export async function signIn(
         requestType: "VERIFY_EMAIL",
         email: session.email,
         idToken: verified.idToken,
-        continueUrl: `${(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "")}/profiles/create`,
+        continueUrl: verificationContinueUrl(),
       });
     }
 

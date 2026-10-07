@@ -16,7 +16,7 @@ import { TextField } from "../ui/Field";
 import { Alert, Check } from "../ui/Icon";
 import { cn } from "../ui/cn";
 
-import { SpamNotice } from "./SpamNotice";
+import { EmailSentPanel } from "./EmailSentPanel";
 
 type Step = "email" | "link" | "password";
 
@@ -75,7 +75,7 @@ export function JoinFlow({
     if (!result.ok) return fail(result.error);
 
     storeEmail(email);
-    setNotice(result.message);
+    setNotice(null);
     setStep("link");
     setBusy(false);
   }
@@ -158,18 +158,20 @@ export function JoinFlow({
     setBusy(false);
   }
 
-  async function onResend(event: React.MouseEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    setBusy(true);
+  async function onResend(): Promise<boolean> {
     setError(null);
 
     const result = await startJoinAction(seriesId, linkEmail || email).catch(() => null);
 
-    if (!result) return fail("Could not resend the link. Try again.");
-    if (!result.ok) return fail(result.error);
-
-    setNotice(result.message);
-    setBusy(false);
+    if (!result) {
+      setError("Could not resend the link. Try again.");
+      return false;
+    }
+    if (!result.ok) {
+      setError(result.error);
+      return false;
+    }
+    return true;
   }
 
   async function onComplete(event: React.FormEvent<HTMLFormElement>) {
@@ -263,7 +265,7 @@ export function JoinFlow({
               onChange={(event) => setEmail(event.target.value)}
               hint="We'll send a sign-in link here."
             />
-            <Button type="submit" busy={busy} className="w-full">
+            <Button type="submit" busy={busy} busyLabel="Sending link…" className="w-full">
               Send sign-in link
             </Button>
           </form>
@@ -282,38 +284,21 @@ export function JoinFlow({
                 onChange={(event) => setLinkEmail(event.target.value)}
                 hint="Only needed when opening the link on another device."
               />
-              <Button type="submit" busy={busy} className="w-full">
+              <Button type="submit" busy={busy} busyLabel="Verifying…" className="w-full">
                 Open link
               </Button>
             </form>
           ) : (
-            <div className="mt-6 space-y-4">
-              <p className="rounded-control border border-border bg-surface-sunken px-3 py-2.5 text-sm text-fg-muted">
-                Check your inbox and open the link — it brings you back here to
-                choose a password.
-              </p>
-              <SpamNotice />
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <button
-                  type="button"
-                  onClick={onResend}
-                  className="text-sm font-semibold text-ink-700 underline-offset-4 hover:text-ink-900 hover:underline"
-                >
-                  Resend link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep("email");
-                    setError(null);
-                    setNotice(null);
-                  }}
-                  className="text-sm font-semibold text-ink-700 underline-offset-4 hover:text-ink-900 hover:underline"
-                >
-                  Use a different email
-                </button>
-              </div>
-            </div>
+            <EmailSentPanel
+              email={email.trim().toLowerCase()}
+              body="Open it on this device — it brings you back here to choose a password."
+              onResend={onResend}
+              onChangeEmail={() => {
+                setStep("email");
+                setError(null);
+                setNotice(null);
+              }}
+            />
           )
         ) : null}
 
@@ -328,7 +313,7 @@ export function JoinFlow({
               onChange={(event) => setPassword(event.target.value)}
               hint="At least 8 characters."
             />
-            <Button type="submit" busy={busy} className="w-full">
+            <Button type="submit" busy={busy} busyLabel="Creating account…" className="w-full">
               Create account
             </Button>
           </form>

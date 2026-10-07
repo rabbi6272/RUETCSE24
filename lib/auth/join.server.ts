@@ -13,6 +13,7 @@ import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
 import { idTokenForUid } from "./verification.server";
 import { getSeries } from "../../types/series";
+import { siteUrlFor } from "../site-url";
 
 /**
  * Self sign-up for a series.
@@ -41,17 +42,8 @@ const RESEND_COOLDOWN_MS = 60 * 1000;
 
 type Result<T> = { ok: true } & T | { ok: false; error: string };
 
-function siteBase(): string {
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.NODE_ENV === "production"
-      ? "https://ruetcsearchive.app"
-      : "http://localhost:3000");
-  return base.replace(/\/+$/, "");
-}
-
 export function joinContinueUrl(seriesId: string): string {
-  return `${siteBase()}/s/${seriesId}/join`;
+  return siteUrlFor(`/s/${seriesId}/join`);
 }
 
 function joinSendRef(email: string) {

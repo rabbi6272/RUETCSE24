@@ -168,6 +168,7 @@ export function SetPasswordForm({
           <Button
             type="submit"
             busy={busy}
+            busyLabel="Saving…"
             disabled={mismatch || !newPassword}
             className="w-full"
           >

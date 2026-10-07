@@ -41,6 +41,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   /** Shows a busy state and blocks interaction without losing the label width. */
   busy?: boolean;
+  /** Label shown while busy, e.g. "Sending link…". Defaults to the normal label. */
+  busyLabel?: ReactNode;
   children?: ReactNode;
 }
 
@@ -48,6 +50,7 @@ export function Button({
   variant = "primary",
   size = "md",
   busy = false,
+  busyLabel,
   className,
   disabled,
   children,
@@ -61,13 +64,9 @@ export function Button({
       className={buttonClasses(variant, size, className)}
       {...rest}
     >
-      {busy ? (
-        <>
-          <Spinner />
-          <span className="sr-only-focusable">Working</span>
-        </>
-      ) : null}
-      {children}
+      {busy ? <Spinner /> : null}
+      {busy && !busyLabel ? <span className="sr-only-focusable">Working</span> : null}
+      {busy && busyLabel ? busyLabel : children}
     </button>
   );
 }

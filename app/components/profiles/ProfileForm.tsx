@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 import {
   FIELD_LIMITS,
@@ -18,6 +19,7 @@ import {
   useUpdateContact,
   useUpdateProfile,
   useViewerProfile,
+  useViewerSession,
 } from "../../../lib/db/students/students.hooks";
 
 import { BLOOD_GROUPS, SECTION_LABELS } from "../../../types/Student";
@@ -89,6 +91,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const { data: session, isPending: sessionPending } = useViewerSession();
   const { data: viewer, isPending: viewerPending } = useViewerProfile();
   const { data: contact, isPending: contactPending } = useMyContact();
 
@@ -167,10 +170,17 @@ export function ProfileForm({ mode }: ProfileFormProps) {
     // Same schemas the server uses, so the user sees the real message instead of
     // a generic failure. The server revalidates regardless.
     const parsed =
-      mode === "create" ? profileDraftSchema.safeParse(draft) : updateProfileSchema.safeParse(draft);
+      mode === "create"
+        ? profileDraftSchema.safeParse(draft)
+        : updateProfileSchema.safeParse({ ...draft, published: values.published });
 
     if (!parsed.success) {
       setErrors(toFieldErrors(parsed.error.issues));
+      // Bring the first problem into view; otherwise an off-screen error looks
+      // like a button that does nothing.
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      });
       return;
     }
 
@@ -191,6 +201,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
         return;
       }
 
+      toast.success("Profile created");
       router.push(`/profiles/${result.profile.id}`);
       router.refresh();
       return;
@@ -222,6 +233,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
 
     await queryClient.invalidateQueries({ queryKey: studentsKeys.all });
     setFormError(null);
+    toast.success("Changes saved");
   }
 
   async function removeServerImage() {
@@ -229,7 +241,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
     return response.ok;
   }
 
-  if (viewerPending || (mode === "update" && contactPending)) {
+  if (sessionPending || viewerPending || contactPending) {
     return (
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
         <Skeleton className="h-8 w-48" />
@@ -238,7 +250,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
     );
   }
 
-  if (!viewer) {
+  if (!session) {
     return (
       <SignInPanel
         context={
@@ -250,7 +262,26 @@ export function ProfileForm({ mode }: ProfileFormProps) {
     );
   }
 
-  if (mode === "create") {
+  if (mode === "update" && !viewer) {
+    return (
+      <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
+        <div className="rounded-panel border border-border bg-surface p-6 shadow-card sm:p-8">
+          <h1 className="text-xl font-bold tracking-tight text-fg">
+            You don&apos;t have a profile yet
+          </h1>
+          <p className="mt-2 text-sm text-fg-muted">
+            Signed in as <span className="font-semibold text-fg">{session.email}</span>. Create
+            your profile to appear in the directory.
+          </p>
+          <Link href="/profiles/create" className={`${buttonClasses("primary", "sm")} mt-6`}>
+            Create profile
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "create" && viewer) {
     return (
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
         <div className="rounded-panel border border-border bg-surface p-6 shadow-card sm:p-8">
@@ -278,14 +309,20 @@ export function ProfileForm({ mode }: ProfileFormProps) {
     );
   }
 
-  const busy = updateProfile.isPending || updateContact.isPending;
+  const creating = mode === "create";
+  const saving = createProfile.isPending || updateProfile.isPending || updateContact.isPending;
+  const busy = saving;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 lg:py-12">
-      <h1 className="text-2xl font-bold tracking-tight text-fg">Edit profile</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-fg">
+        {creating ? "Create your profile" : "Edit profile"}
+      </h1>
       <p className="mt-1.5 text-sm text-fg-muted">
-        Signed in as <span className="font-semibold text-fg">{viewer.email}</span>.
-        Your email address cannot be changed.
+        Signed in as <span className="font-semibold text-fg">{session.email}</span>.
+        {creating
+          ? " Only full name and roll are required — you can fill in the rest later."
+          : " Your email address cannot be changed."}
       </p>
 
       <form
@@ -304,7 +341,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
             name={values.fullName || "Profile"}
             picture={picture}
             onChange={setPicture}
-            onServerRemove={removeServerImage}
+            onServerRemove={creating ? undefined : removeServerImage}
             disabled={busy}
           />
         </section>
@@ -442,6 +479,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
             error={errors.mobileNumber}
           />
 
+          {creating ? null : (
           <div className="rounded-control border border-border bg-surface-sunken p-4">
             <ToggleField
               name="published"
@@ -451,6 +489,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
               onChange={(checked) => set("published", checked)}
             />
           </div>
+          )}
         </section>
 
         {formError ? (
@@ -464,11 +503,15 @@ export function ProfileForm({ mode }: ProfileFormProps) {
         ) : null}
 
         <div className="flex flex-wrap gap-2 border-t border-border pt-6">
-          <Button type="submit" busy={updateProfile.isPending} disabled={busy}>
-            Save changes
+          <Button
+            type="submit"
+            busy={saving}
+            busyLabel={creating ? "Creating profile…" : "Saving…"}
+          >
+            {creating ? "Create profile" : "Save changes"}
           </Button>
           <Link
-            href={`/profiles/${viewer.id}`}
+            href={viewer ? `/profiles/${viewer.id}` : "/"}
             className={buttonClasses("secondary", "md")}
           >
             Cancel

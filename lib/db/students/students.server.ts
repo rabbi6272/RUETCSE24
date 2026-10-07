@@ -174,6 +174,16 @@ export async function getRollForEmailAction(email: string): Promise<string | nul
   return getRollForClaimedEmail(email);
 }
 
+/**
+ * Who is signed in, independent of whether they have a profile yet — a fresh
+ * Join account is signed in long before its profile exists.
+ */
+export async function getViewerSessionAction(): Promise<{ email: string } | null> {
+  const session = await getSession();
+
+  return session ? { email: session.email } : null;
+}
+
 export async function getMyProfileAction(): Promise<Profile | null> {
   const session = await getSession();
 

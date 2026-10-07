@@ -92,7 +92,7 @@ export function ForgotPasswordFlow() {
                 </p>
               ) : null}
 
-              <Button type="submit" busy={busy} className="w-full">
+              <Button type="submit" busy={busy} busyLabel="Sending…" className="w-full">
                 Send reset link
               </Button>
             </form>

@@ -22,6 +22,7 @@ import { sendOobCode, signInWithOutboundLink, maskEmail } from "./oob.server";
 import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
 import { idTokenForUid } from "./verification.server";
+import { siteUrlFor } from "../site-url";
 import { seriesFromRoll } from "../../types/series";
 
 import type { LegacyProfile, Profile } from "../../types/Student";
@@ -58,12 +59,7 @@ const RESEND_COOLDOWN_MS = 60 * 1000;
 type Result<T> = { ok: true } & T | { ok: false; error: string };
 
 function claimContinueUrl(): string {
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.NODE_ENV === "production"
-      ? "https://ruetcsearchive.app"
-      : "http://localhost:3000");
-  return `${base.replace(/\/+$/, "")}/profiles/claim`;
+  return siteUrlFor("/profiles/claim");
 }
 
 function claimSendRef(email: string) {

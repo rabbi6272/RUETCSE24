@@ -120,7 +120,13 @@ export function SignInPanel({ context }: { context: string }) {
           ) : null}
 
           <div className="mt-6 space-y-3">
-            <Button type="button" busy={resending} onClick={onResend} className="w-full">
+            <Button
+              type="button"
+              busy={resending}
+              busyLabel="Sending…"
+              onClick={onResend}
+              className="w-full"
+            >
               Resend verification email
             </Button>
             <button
@@ -177,7 +183,12 @@ export function SignInPanel({ context }: { context: string }) {
             </p>
           ) : null}
 
-          <Button type="submit" busy={signIn.isPending} className="w-full">
+          <Button
+            type="submit"
+            busy={signIn.isPending}
+            busyLabel="Signing in…"
+            className="w-full"
+          >
             Sign in
           </Button>
         </form>
