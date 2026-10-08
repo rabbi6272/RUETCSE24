@@ -1,14 +1,15 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getSession } from "../../auth/session";
+import { revalidateAll } from "../../revalidate";
 import {
   changePassword,
   deleteAccount,
   requestPasswordReset,
   signIn,
   signOut,
+  type SignInResult,
 } from "../../auth/auth.service";
 import {
   completeClaim,
@@ -16,8 +17,7 @@ import {
   startClaim,
   type ClaimLinkResult,
 } from "../../auth/claim.server";
-import { completeJoin, openJoinLink, startJoin } from "../../auth/join.server";
-import { completePasswordRotation } from "../../auth/rotation.server";
+import { signUpWithPassword, type SignUpResult } from "../../auth/join.server";
 import { freshEmailVerified, resendVerification } from "../../auth/verification.server";
 import { countUnclaimed } from "./students.admin.repo";
 import {
@@ -44,37 +44,15 @@ import type { PrivateContact, Profile } from "../../../types/Student";
 type Result<T> = { ok: true } & T | { ok: false; error: string };
 type PlainResult = { ok: true } | { ok: false; error: string };
 
-const PROFILES_PATH = "/profiles";
-
 function revalidateProfiles(): void {
-  revalidateTag("profiles", "max");
-  revalidatePath(PROFILES_PATH);
+  revalidateAll();
 }
 
 export async function signInAction(
   email: string,
   password: string,
-): Promise<
-  Result<{ email: string; emailVerified: boolean; mustRotate: boolean; needsSection: boolean }>
-> {
+): Promise<SignInResult> {
   return signIn(email, password);
-}
-
-/**
- * Replaces a seeded bootstrap password. On success the session is intentionally
- * destroyed (the refresh tokens were revoked), so the caller must send the
- * student back through sign-in.
- */
-export async function completePasswordRotationAction(input: {
-  currentPassword: string;
-  newPassword: string;
-  sec?: string;
-}): Promise<PlainResult> {
-  const result = await completePasswordRotation(input);
-
-  if (result.ok) revalidateProfiles();
-
-  return result;
 }
 
 export async function signOutAction(): Promise<PlainResult> {
@@ -93,11 +71,7 @@ export async function changePasswordAction(
   currentPassword: string,
   newPassword: string,
 ): Promise<PlainResult> {
-  const result = await changePassword(currentPassword, newPassword);
-
-  if (result.ok) revalidatePath("/profiles/settings");
-
-  return result;
+  return changePassword(currentPassword, newPassword);
 }
 
 export async function deleteAccountAction(
@@ -105,7 +79,7 @@ export async function deleteAccountAction(
 ): Promise<PlainResult> {
   const result = await deleteAccount(password);
 
-  if (result.ok) revalidatePath(PROFILES_PATH);
+  if (result.ok) revalidateProfiles();
 
   return result;
 }
@@ -138,25 +112,17 @@ export async function completeClaimAction(
   return result;
 }
 
-/** Self sign-up: sends the magic link for a registered, open series. */
-export async function startJoinAction(
+/** Email + password sign-up for an open series; signs the new account in. */
+export async function signUpAction(
   seriesId: string,
   email: string,
-): Promise<Result<{ message: string }>> {
-  return startJoin(seriesId, email);
-}
+  password: string,
+): Promise<SignUpResult> {
+  const result = await signUpWithPassword(seriesId, email, password);
 
-/** Exchanges the join link: creates the account, marks it verified, signs in. */
-export async function openJoinLinkAction(
-  oobCode: string,
-  email: string,
-): Promise<Result<{ hasProfile: boolean }>> {
-  return openJoinLink(oobCode, email);
-}
+  if (result.ok) revalidateProfiles();
 
-/** Final join step: sets the password on the just-opened session's account. */
-export async function completeJoinAction(password: string): Promise<Result<{ uid: string }>> {
-  return completeJoin({ password });
+  return result;
 }
 
 /** Re-issues the VERIFY_EMAIL link for the current session. */
@@ -178,10 +144,16 @@ export async function getRollForEmailAction(email: string): Promise<string | nul
  * Who is signed in, independent of whether they have a profile yet — a fresh
  * Join account is signed in long before its profile exists.
  */
-export async function getViewerSessionAction(): Promise<{ email: string } | null> {
+export async function getViewerSessionAction(): Promise<{
+  email: string;
+  emailVerified: boolean;
+} | null> {
   const session = await getSession();
+  if (!session) return null;
 
-  return session ? { email: session.email } : null;
+  // Live read: the verification link flips this without re-signing anyone in.
+  const emailVerified = session.emailVerified || (await freshEmailVerified(session.uid));
+  return { email: session.email, emailVerified };
 }
 
 export async function getMyProfileAction(): Promise<Profile | null> {

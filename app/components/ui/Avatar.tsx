@@ -7,6 +7,7 @@ const SIZES = {
   md: "size-14 text-lg",
   lg: "size-24 text-3xl",
   xl: "size-32 text-4xl",
+  xxl: "size-44 text-5xl",
 } as const;
 
 export type AvatarSize = keyof typeof SIZES;
@@ -47,8 +48,8 @@ export function Avatar({
       <CldImage
         crop="fill"
         gravity="face"
-        width={256}
-        height={256}
+        width={356}
+        height={356}
         src={src}
         alt={alt ?? ""}
         className={cn(

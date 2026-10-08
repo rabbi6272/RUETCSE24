@@ -8,8 +8,8 @@ import { cn } from "./cn";
 
 const control =
   "w-full rounded-control border bg-surface px-3.5 text-[0.9375rem] text-fg " +
-  "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150 " +
-  "focus:outline-none focus:ring-[3px] " +
+  "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-250 " +
+  "focus:outline-none " +
   "disabled:bg-surface-sunken disabled:text-fg-subtle disabled:cursor-not-allowed";
 
 const controlOk =

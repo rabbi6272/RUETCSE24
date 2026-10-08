@@ -12,7 +12,7 @@ export const metadata: Metadata = createMetadata({
   noIndex: true,
 });
 
-/** Same gate as `update/`: no owner surface is reachable before rotation. */
+/** Same gate as `update/`: an unclaimed old-directory session goes to Claim. */
 export default async function CreateProfileLayout({
   children,
 }: {
@@ -21,7 +21,7 @@ export default async function CreateProfileLayout({
   const session = await getSession();
 
   if (session?.mustRotate) {
-    redirect("/profiles/set-password");
+    redirect("/profiles/claim");
   }
 
   return children;

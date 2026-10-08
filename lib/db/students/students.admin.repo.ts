@@ -203,3 +203,9 @@ export async function releaseRoll(roll: string, uid: string): Promise<void> {
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
+
+/** How many profiles point at this Cloudinary image (used before deleting a shared-looking id). */
+export async function countProfilesWithPicture(publicId: string): Promise<number> {
+  const snap = await profiles().where("profilePicture.publicId", "==", publicId).count().get();
+  return snap.data().count;
+}

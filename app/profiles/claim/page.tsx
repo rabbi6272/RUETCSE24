@@ -11,7 +11,8 @@ export const metadata: Metadata = {
 
 interface ClaimPageProps {
   // The emailed sign-in link lands here with `oobCode` appended by Firebase.
-  searchParams: Promise<{ oobCode?: string | string[] }>;
+  // `from=google`: the Google callback sent an old-directory address here.
+  searchParams: Promise<{ oobCode?: string | string[]; from?: string | string[] }>;
 }
 
 export default async function ClaimPage({ searchParams }: ClaimPageProps) {
@@ -19,5 +20,5 @@ export default async function ClaimPage({ searchParams }: ClaimPageProps) {
   const raw = typeof params.oobCode === "string" ? params.oobCode : null;
   const oobCode = raw && raw.length <= 512 ? raw : null;
 
-  return <ClaimFlow oobCode={oobCode} />;
+  return <ClaimFlow oobCode={oobCode} fromGoogle={params.from === "google"} />;
 }

@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getProfileDoc, listPublishedProfiles } from "./students.repo";
 import {
-  completePasswordRotationAction,
   createProfileAction,
   getMyContactAction,
   getMyProfileAction,
@@ -103,8 +102,11 @@ export function useViewerSession() {
     queryKey: studentsKeys.session(),
     queryFn: getViewerSessionAction,
     // Always re-check: Join/Claim sign the user in via a full redirect, and a
-    // cached "signed out" would show them the sign-in panel again.
+    // cached "signed out" would show them the sign-in panel again. Also
+    // re-check on tab focus, so "verify your email" clears after the user
+    // opens the link in another tab (global default disables this).
     staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -145,20 +147,6 @@ export function useSignIn() {
     onSuccess: (result) => {
       if (result.ok) invalidate();
     },
-  });
-}
-
-/**
- * Rotation ends the session by design, so there is deliberately no cache
- * invalidation here: the caller routes back to sign-in with the new password.
- */
-export function useCompletePasswordRotation() {
-  return useMutation({
-    mutationFn: (input: {
-      currentPassword: string;
-      newPassword: string;
-      sec?: string;
-    }) => completePasswordRotationAction(input),
   });
 }
 

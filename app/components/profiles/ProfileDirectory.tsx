@@ -85,6 +85,7 @@ export function ProfileDirectory({
         profile.fullName.toLowerCase().includes(needle) ||
         profile.nickname.toLowerCase().includes(needle) ||
         profile.email.toLowerCase().includes(needle) ||
+        profile.bloodGroup.toLowerCase().includes(needle) ||
         profile.roll.toLowerCase().includes(needle)
       );
     });
@@ -101,10 +102,10 @@ export function ProfileDirectory({
   if (!entry) return null;
 
   return (
-    <div className="mx-auto w-full xl:max-w-[80%] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+    <div className="mx-auto w-full md:w-[90%] xl:w-[80%] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <DirectoryHeader entry={entry} />
 
-      {profiles ? (
+      {profiles && (
         <DirectoryToolbar
           query={query}
           onQueryChange={setQuery}
@@ -114,7 +115,7 @@ export function ProfileDirectory({
           total={profiles.length}
           shown={filtered.length}
         />
-      ) : null}
+      )}
 
       <div className="mt-6">
         {isPending ? <ProfileGridSkeleton /> : null}
@@ -160,7 +161,7 @@ export function ProfileDirectory({
         {profiles && filtered.length > 0 ? (
           <>
             <ul
-              className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+              className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
               aria-busy={isFetching || undefined}
             >
               {filtered.map((profile) => (
@@ -170,10 +171,6 @@ export function ProfileDirectory({
               ))}
             </ul>
 
-            {/*
-              Announced once the list settles, so the change from "loading" to
-              "12 profiles" is not silent.
-            */}
             <p role="status" aria-live="polite" className="sr-only-focusable">
               {isFetching ? "Updating results" : `${filtered.length} profiles shown`}
             </p>

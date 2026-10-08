@@ -131,7 +131,11 @@ export const createProfileSchema = z.object({
   contact: z.object({ mobileNumber: mobileNumberSchema }).strict(),
 });
 
-/** Patch semantics: every field optional, but at least one required. */
+/**
+ * Patch semantics: every field optional, but at least one required.
+ * `profilePicture` is deliberately absent: the photo is changed only through
+ * the upload/delete routes, which derive the URL server-side.
+ */
 export const updateProfileSchema = z
   .object({
     fullName: fullNameSchema.optional(),
@@ -142,7 +146,6 @@ export const updateProfileSchema = z
     bio: bioSchema.optional(),
     hobby: hobbySchema.optional(),
     fbProfile: optionalUrl.optional(),
-    profilePicture: profilePictureSchema.optional(),
     published: z.boolean().optional(),
   })
   .strict()
@@ -160,12 +163,8 @@ export const claimStartSchema = z
   .object({ email: emailSchema })
   .strict();
 
-export const joinStartSchema = z
-  .object({ series: seriesSchema, email: emailSchema })
-  .strict();
-
-export const joinCompleteSchema = z
-  .object({ password: passwordSchema })
+export const signUpSchema = z
+  .object({ series: seriesSchema, email: emailSchema, password: passwordSchema })
   .strict();
 
 export const claimCompleteSchema = z
@@ -181,7 +180,7 @@ export type ProfileDraftInput = z.infer<typeof profileDraftSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ClaimCompleteInput = z.infer<typeof claimCompleteSchema>;
-export type JoinCompleteInput = z.infer<typeof joinCompleteSchema>;
+export type SignUpInput = z.infer<typeof signUpSchema>;
 
 export const FIELD_LIMITS = {
   fullName: 80,
