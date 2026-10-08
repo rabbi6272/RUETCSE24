@@ -20,6 +20,7 @@ import {
 } from "./students.schema";
 import { toProfile } from "./students.mapper";
 import { seriesFromRoll } from "../../../types/series";
+import { NO_PICTURE, findAvatar } from "../../media/avatar.server";
 
 import type { PrivateContact, Profile } from "../../../types/Student";
 
@@ -80,9 +81,15 @@ export async function createProfileFor(
     return { ok: false, error: "That roll number has already been claimed." };
   }
 
+  // The photo is never taken from the client: whatever the create form
+  // uploaded sits at this account's avatar id, and its URL comes from
+  // Cloudinary. A client-supplied publicId/url is ignored.
+  const profilePicture = (await findAvatar(uid)) ?? NO_PICTURE;
+
   const now = Date.now();
   const profile: Profile = {
     ...draft,
+    profilePicture,
     id: uid,
     email: email.trim().toLowerCase(),
     series: series.id,

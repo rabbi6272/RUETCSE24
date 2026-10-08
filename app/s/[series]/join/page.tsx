@@ -8,7 +8,6 @@ import { getSeries } from "../../../../types/series";
 
 interface JoinPageProps {
   params: Promise<{ series: string }>;
-  searchParams: Promise<{ oobCode?: string | string[] }>;
 }
 
 export async function generateMetadata({
@@ -25,16 +24,10 @@ export async function generateMetadata({
   };
 }
 
-export default async function JoinPage({ params, searchParams }: JoinPageProps) {
+export default async function JoinPage({ params }: JoinPageProps) {
   const { series } = await params;
   const entry = getSeries(series);
   if (!entry) notFound();
-
-  const sp = await searchParams;
-  const oobCode =
-    typeof sp.oobCode === "string" && sp.oobCode.length <= 512
-      ? sp.oobCode
-      : null;
 
   if (entry.status !== "open") {
     return (
@@ -59,10 +52,6 @@ export default async function JoinPage({ params, searchParams }: JoinPageProps) 
   }
 
   return (
-    <JoinFlow
-      seriesId={entry.id}
-      joinPath={`/s/${entry.id}/join`}
-      oobCode={oobCode}
-    />
+    <JoinFlow seriesId={entry.id} />
   );
 }

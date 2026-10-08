@@ -18,6 +18,10 @@ import { verificationContinueUrl } from "./verification.server";
  */
 
 type Result<T> = { ok: true } & T | { ok: false; error: string };
+/** `code: "claim"` → the account is an unclaimed old-directory profile. */
+export type SignInResult =
+  | { ok: true; email: string; emailVerified: boolean }
+  | { ok: false; error: string; code?: "claim" };
 type PlainResult = { ok: true } | { ok: false; error: string };
 
 const SIGN_IN_FAILED = "Incorrect email or password.";
@@ -27,9 +31,7 @@ const GENERIC_RESET_MESSAGE =
 export async function signIn(
   rawEmail: string,
   rawPassword: string,
-): Promise<
-  Result<{ email: string; emailVerified: boolean; mustRotate: boolean; needsSection: boolean }>
-> {
+): Promise<SignInResult> {
   const parsed = loginSchema.safeParse({ email: rawEmail, password: rawPassword });
 
   if (!parsed.success) {
@@ -55,6 +57,19 @@ export async function signIn(
       return { ok: false, error: SIGN_IN_FAILED };
     }
 
+    // A seeded account still on its old (publicly readable) pincode: knowing
+    // the pincode proves nothing, so no session. Reclaiming goes through the
+    // Claim email link only.
+    if (session.mustRotate) {
+      await clearSessionCookie();
+      console.log(`[auth] signin ${maskEmail(email)} -> needs-claim`);
+      return {
+        ok: false,
+        code: "claim",
+        error: "This account is from the old directory. Reclaim it with an email link.",
+      };
+    }
+
     // Every sign-in by an unverified account re-sends the verification link.
     // The idToken minted for this very attempt is what sendOobCode needs, so
     // delivery has no separate endpoint or credential. Failures stay silent:
@@ -68,19 +83,8 @@ export async function signIn(
       });
     }
 
-    // The claims ride along on the freshly minted session cookie, so the client
-    // can send a student straight to the rotation form instead of letting them
-    // edit a profile while still on a publicly known password.
-    console.log(
-      `[auth] signin ${maskEmail(email)} -> ok verified=${session.emailVerified} rotate=${session.mustRotate} needsSection=${session.needsSection}`,
-    );
-    return {
-      ok: true,
-      email: session.email,
-      emailVerified: session.emailVerified,
-      mustRotate: session.mustRotate,
-      needsSection: session.needsSection,
-    };
+    console.log(`[auth] signin ${maskEmail(email)} -> ok verified=${session.emailVerified}`);
+    return { ok: true, email: session.email, emailVerified: session.emailVerified };
   } catch (error) {
     console.error("[auth] session creation failed", error);
     return { ok: false, error: "Something went wrong. Please try again." };

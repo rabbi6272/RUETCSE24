@@ -13,16 +13,12 @@ export const metadata: Metadata = createMetadata({
 });
 
 /**
- * Server-side half of the bootstrap-password gate.
- *
- * The client half lives in `SignInPanel`, which redirects the moment a sign-in
- * succeeds. That is a convenience, not a control: a student who signed in
- * earlier, closed the tab, and comes back days later still holds a valid cookie
- * and never runs that code again. This check is what actually stops them
- * reaching an owner surface on a password that was public.
+ * Old-directory gate. Sign-in no longer opens a session for a seeded account
+ * still on its public pincode, but a cookie minted before that change can live
+ * for days; this sends it to Claim, the only way to reclaim such an account.
  *
  * It only covers the mutating surfaces. The directory and profile pages stay
- * public, because a pending rotation should not stop someone browsing.
+ * public.
  */
 export default async function UpdateProfileLayout({
   children,
@@ -32,7 +28,7 @@ export default async function UpdateProfileLayout({
   const session = await getSession();
 
   if (session?.mustRotate) {
-    redirect("/profiles/set-password");
+    redirect("/profiles/claim");
   }
 
   return children;

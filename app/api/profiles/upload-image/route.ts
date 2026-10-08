@@ -1,26 +1,33 @@
-import { v2 as cloudinary } from "cloudinary";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 
 import { getSession } from "../../../../lib/auth/session";
+import {
+  countProfilesWithPicture,
+  findProfileById,
+  patchProfile,
+} from "../../../../lib/db/students/students.admin.repo";
+import {
+  avatarPublicId,
+  destroyImage,
+  ownsImage,
+  uploadAvatar,
+} from "../../../../lib/media/avatar.server";
+import { revalidateAll } from "../../../../lib/revalidate";
 
 /**
- * Profile image upload.
+ * Profile photo upload. Requires a session, verifies the bytes with sharp,
+ * re-encodes to WebP, and writes to the caller's single avatar id
+ * (`Users/{uid}/avatar`, overwritten on every upload).
  *
- * Previously this endpoint was unauthenticated, so anyone could use the site's
- * Cloudinary credentials as a free image host. It now requires a session and
- * writes into a folder derived from the caller's uid, so an image can be traced
- * to the account that uploaded it and cannot be overwritten by another user.
+ * When the caller already has a profile the new photo is saved onto it right
+ * away (no "Save changes" needed) and the previous image, if it lived at a
+ * different id (an old-site upload), is deleted. Without a profile yet — the
+ * create form — the photo is only stored; `createProfileFor` picks it up.
  */
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-
-cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -45,10 +52,7 @@ export async function POST(request: Request) {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: "File size exceeds 5MB limit" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "File size exceeds 5MB limit" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -63,43 +67,37 @@ export async function POST(request: Request) {
 
     const optimizedBuffer = await sharp(buffer)
       .resize({ width: 1920, height: 1920, fit: "inside" })
-      .toFormat("webp", { quality: 80 })
+      .toFormat("webp", { quality: 70 })
       .toBuffer();
 
-    const result = await uploadToCloudinary(optimizedBuffer, session.uid);
+    const picture = await uploadAvatar(session.uid, optimizedBuffer);
 
-    return NextResponse.json(
-      { success: true, url: result.secure_url, publicId: result.public_id },
-      { status: 200 },
-    );
+    const profile = await findProfileById(session.uid);
+    let saved = false;
+
+    if (profile) {
+      const previous = profile.profilePicture?.publicId ?? "";
+      await patchProfile(session.uid, { profilePicture: picture });
+      saved = true;
+
+      // The old image is no longer referenced by this profile (hence 0).
+      if (
+        previous &&
+        previous !== avatarPublicId(session.uid) &&
+        (await ownsImage(session.uid, previous, countProfilesWithPicture, 0))
+      ) {
+        await destroyImage(previous).catch((error) =>
+          console.error(`[photo] cleanup of previous image failed uid=${session.uid}`, error),
+        );
+      }
+    }
+
+    console.log(`[photo] upload uid=${session.uid} saved=${saved}`);
+    if (saved) revalidateAll();
+
+    return NextResponse.json({ success: true, ...picture, saved }, { status: 200 });
   } catch (error) {
-    console.error("Upload failed:", error);
-
-    const errorMessage = error instanceof Error ? error.message : "Upload failed";
-
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("[photo] upload failed:", error);
+    return NextResponse.json({ error: "Upload failed. Try again." }, { status: 500 });
   }
-}
-
-function uploadToCloudinary(buffer: Buffer, uid: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        // Scoping the folder to the uid is what makes ownership checkable in
-        // the delete route.
-        folder: `Users/${uid}`,
-        resource_type: "image",
-        overwrite: true,
-      },
-      (error, result) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(result);
-        }
-      },
-    );
-
-    stream.end(buffer);
-  });
 }

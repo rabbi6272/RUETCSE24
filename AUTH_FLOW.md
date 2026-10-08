@@ -1,7 +1,8 @@
 # Auth Flow — Current Architecture
 
 Authoritative description of how authentication works in this codebase **as it exists now**:
-Firebase-only email auth, server-side, with magic-link claim/join and a 5-day session cookie.
+Firebase-only auth, server-side: sign-up/sign-in with email+password or Google, magic-link
+**Claim** (the only way to reclaim an old-directory profile), and a 5-day session cookie.
 
 Companion doc: `IMPLEMENTATION_PLAN.md` (the plan that produced this).
 
@@ -22,7 +23,7 @@ Companion doc: `IMPLEMENTATION_PLAN.md` (the plan that produced this).
 4. **Session = HttpOnly cookie, never a token in JS.** The browser holds a Firebase
    session cookie (`__session`), minted server-side. No refresh token, no idToken, and no
    way for page scripts to read the session.
-5. **Anti-enumeration by default.** Claim, join, and password-reset return one uniform
+5. **Anti-enumeration by default.** Claim and password-reset return one uniform
    response whether or not an account/entry exists. Skip reasons are visible **only** in
    `[auth]` server logs (emails masked).
 
@@ -36,10 +37,11 @@ Companion doc: `IMPLEMENTATION_PLAN.md` (the plan that produced this).
 | OOB email choke point | `lib/auth/oob.server.ts` | `sendOobCode` (send links) + `signInWithOutboundLink` (exchange clicked magic link → `idToken`, **creates the account if none exists**). Logs every send/exchange; exports `maskEmail`. |
 | Session | `lib/auth/session.ts` | `createSessionCookie(idToken)` / `getSession()` (React `cache`-deduped per request, `verifySessionCookie(..., checkRevoked: true)`) / `clearSessionCookie()`. |
 | Password & lifecycle | `lib/auth/auth.service.ts` | `signIn`, `requestPasswordReset`, `changePassword`, `deleteAccount`, `signOut`. |
-| Password rotation | `lib/auth/rotation.server.ts` | One-time upgrade of the seeded public pincode (`mustRotate` accounts). |
 | Email verification | `lib/auth/verification.server.ts` | `freshEmailVerified(uid)` (live Admin read) + `resendVerification()` (custom-token → idToken → `VERIFY_EMAIL`). |
 | Claim (legacy, series 24) | `lib/auth/claim.server.ts` | `startClaim` → `openClaimLink` → `completeClaim`. |
-| Join (self sign-up, open series) | `lib/auth/join.server.ts` | `startJoin` → `openJoinLink` → `completeJoin`. |
+| Sign-up (email + password) | `lib/auth/join.server.ts` | `signUpWithPassword` (REST `accounts:signUp`) + `isOldDirectoryEmail`. |
+| Google sign-in/up | `lib/auth/google.server.ts`, `app/api/auth/google/{start,callback}/route.ts` | Server-side OAuth (state + PKCE) → REST `signInWithIdp`. |
+| Link base URL | `lib/site-url.ts` | `siteBaseUrl()` / `siteUrlFor()` for every `continueUrl` and the OAuth `redirect_uri`. |
 | Rate-limit keys | `lib/auth/tokens.ts` | `hashKey()` for `rateLimits` doc ids (never the raw email). |
 | Server action surface | `lib/db/students/students.server.ts` | The **only** entry points the UI can call. Each action = one auth/db operation + logging. |
 | UI flows | `app/components/profiles/` | `SignInPanel`, `ForgotPasswordFlow`, `SetPasswordForm`, `ClaimFlow`, `JoinFlow`, create/update forms. |
@@ -51,7 +53,7 @@ Companion doc: `IMPLEMENTATION_PLAN.md` (the plan that produced this).
 | `profiles/{uid}` | Canonical student profile; `uid` ties it to the Auth account. Roll reservation happens here (`reserveRoll`). |
 | `legacyProfiles/{id}` | Pre-Firebase entries, addressed by `email`; consumed (deleted) by a successful claim. |
 | `rollIndex` | Roll → uid reservation used to make claims race-safe. |
-| `rateLimits/{sha256(key)}` | `claim:<email>` / `join:<email>` resend cooldowns (`lastSentAt`). |
+| `rateLimits/{sha256(key)}` | `claim:<email>` resend cooldown (`lastSentAt`). |
 
 ### 2.2 Session cookie contract
 
@@ -61,11 +63,11 @@ Companion doc: `IMPLEMENTATION_PLAN.md` (the plan that produced this).
 - Decoded claims surfaced to the app: `uid`, `email`, `emailVerified`, `mustRotate`,
   `needsSection`. Claims are compared against `=== true`, so an absent/null claim can
   never read as "done".
-- `checkRevoked: true` on every read → password change, rotation, or global sign-out
+- `checkRevoked: true` on every read → password change, claim activation, or global sign-out
   (`revokeRefreshTokens`) kills existing cookies instead of letting them linger.
 - `mustRotate` / `needsSection` are set at **seed time** as custom claims
-  (`scripts/seed-auth-users.ts:371`), cleared by `setCustomUserClaims(uid, null)` after a
-  successful rotation.
+  (`scripts/seed-auth-users.ts:371`), cleared by `setCustomUserClaims(uid, null)` when the
+  student completes Claim (§4.6.1).
 
 ---
 
@@ -78,12 +80,12 @@ is reserved for the broadcast feature in `app/email-services` — it never sends
 | `requestType` | Used by | Needs `idToken`? | Where the click lands |
 |---|---|---|---|
 | `PASSWORD_RESET` | forgot-password | No | Firebase's hosted page → user sets a new password there; app never sees a code |
-| `EMAIL_SIGNIN` | claim + join (`canHandleCodeInApp: true`) | No | `continueUrl` back into the app with `?oobCode=…` → app exchanges it |
-| `VERIFY_EMAIL` | sign-in auto-resend, Resend button | **Yes** | Firebase action page flips `emailVerified` → redirects to `continueUrl` (`/profiles/create`) |
+| `EMAIL_SIGNIN` | claim only (`canHandleCodeInApp: true`) | No | `continueUrl` back into the app with `?oobCode=…` → app exchanges it |
+| `VERIFY_EMAIL` | sign-up, sign-in auto-resend, Resend buttons | **Yes** | Firebase action page flips `emailVerified` → redirects to `continueUrl` (`/profiles/create`) |
 
 Firebase console toggles that must be **enabled** (Authentication → Templates):
 `PASSWORD_RESET`, `VERIFY_EMAIL`, **`EMAIL_SIGNIN` ("Email link (passwordless sign-in)")** —
-the last one gates both claim and join; if disabled, sends fail with
+the last one gates claim; if disabled, sends fail with
 `OPERATION_NOT_ALLOWED` and the failure shows up as `[auth] oob EMAIL_SIGNIN … -> <code>`
 in the logs.
 
@@ -98,45 +100,37 @@ locally, set `NEXT_PUBLIC_SITE_URL` in `.env`.
 
 ## 4. Flows
 
-### 4.1 Sign in — `/profiles` (`SignInPanel`)
+### 4.1 Sign in — `/profiles/update`, `/profiles/create` (`SignInPanel`)
+
+Two ways in: **Continue with Google** (§4.9) or email + password:
 
 ```
 UI → signInAction → signIn()
   → loginSchema parse
   → verifyPassword(email, password)            [REST signInWithPassword]
        fail → log "signin … -> bad-password" → "Incorrect email or password."
-  → createSessionCookie(idToken)
-  → getSession()
+  → createSessionCookie(idToken) → getSession()
+  → session.mustRotate (seeded, still on the public pincode)?
+       → clearSessionCookie, log "signin … -> needs-claim"
+       → { ok:false, code:"claim" }   ← the pincode never opens a session
   → if !emailVerified: sendOobCode(VERIFY_EMAIL, idToken, continueUrl=/profiles/create)
-  → return { email, emailVerified, mustRotate, needsSection }
+  → return { email, emailVerified }
 ```
 
-UI branching on the result (`SignInPanel.tsx:54-70`):
-
-| Condition | UI behavior |
+| Result | UI behavior |
 |---|---|
-| `mustRotate` (seeded pincode) | `router.push("/profiles/set-password")` — rotation form first; no profile editing while on a world-readable password |
-| `!emailVerified` | "Check your inbox" state + **Resend** button (`resendVerificationAction`); sign-in itself already re-sent the link |
+| `code: "claim"` | Error + **Reclaim with email link** button → `/profiles/claim` |
+| `!emailVerified` | "Verify your email" state + **Resend** button; sign-in already re-sent the link |
 | otherwise | `router.refresh()` into the signed-in shell |
+| `?authError=google` in URL | "Google sign-in didn't go through" error |
 
-Failures are uniformly `"Incorrect email or password."` (no user-enumeration signal).
+### 4.2 Old-directory accounts — Claim only
 
-### 4.2 Password rotation — `/profiles/set-password` (`SetPasswordForm`)
-
-For seeded accounts whose old password was the publicly listed pincode
-(`rotation.server.ts`, invoked via `completePasswordRotationAction`):
-
-1. Session required.
-2. Re-auth with the current (pincode) password — a stolen cookie alone is not enough.
-3. New password must parse `passwordSchema` and differ from the old one.
-4. If the session carries `needsSection`, the form shows a section picker; the chosen
-   section is patched onto the profile **first** (idempotent, retryable).
-5. Set the new password → clear **all** custom claims (`setCustomUserClaims(uid, null)`)
-   → `revokeRefreshTokens` → clear cookie → success. UI then goes to `/profiles/update`.
-
-Ordering matters: profile write first (retry-safe), password second, claims cleared only
-after the password actually changed. If claim-clearing ever failed, the forgot-password
-link on the form is the documented recovery path.
+The pincode rotation screen (`/profiles/set-password`, `rotation.server.ts`) is **removed**. A seeded
+account (`mustRotate` claim) or a legacy entry with no account can only be reclaimed through the
+Claim magic link (§4.6 / §4.6.1). Every other entry point refuses it and points to Claim:
+password sign-in (`code:"claim"`), password sign-up and Google (`isOldDirectoryEmail`), and the
+`create`/`update` layouts (a leftover `mustRotate` cookie → redirect `/profiles/claim`).
 
 ### 4.3 Password reset — `/profiles/forgot-password` (`ForgotPasswordFlow`)
 
@@ -166,33 +160,26 @@ never reveals whether the address exists.
   flows flip `emailVerified` without re-signing the user in. Failure logs
   `[auth] create-profile -> email-not-verified`.
 
-### 4.5 Join — self sign-up, open series — `/s/[series]/join` (`JoinFlow`)
+### 4.5 Sign up — open series — `/s/[series]/join` (`JoinFlow`)
 
-Three-step UI: **email → link → password** (stepper rendered in `JoinFlow.tsx`).
+One form: **Continue with Google** (§4.9), or email + password + confirm.
 
 ```
-Step 1  startJoinAction(seriesId, email) → startJoin()
-          → joinStartSchema parse
-          → getSeries(seriesId): must exist && status === "open"
-               else → log "join start … -> series-<id>-closed" → 4xx-style message
-          → cooldown: rateLimits/{hashKey("join:"+email)}, 60 s, transactional
-               inside window → log "join cooldown … (resend dropped)", no email
-          → sendOobCode(EMAIL_SIGNIN, continueUrl=/s/<id>/join, canHandleCodeInApp)
-          → ALWAYS: "If that email can join, we've sent a sign-in link to it."
-
-Step 2  page reloads with ?oobCode= → openJoinLinkAction(oobCode, email)
-          → signInWithOutboundLink (creates account if none; wrong email+code pairing fails)
-          → email mismatch → log "join link -> email-mismatch" → generic invalid-link message
-          → adminAuth.updateUser(emailVerified: true)   ← the click IS the proof
-          → createSessionCookie
-          → belt-and-braces re-check of emailVerified via the cookie's uid
-          → hasProfile? → return { hasProfile }  (UI: existing profile → update flow)
-
-Step 3  completeJoinAction(password) → completeJoin()
-          → session required (else "Your session expired.")
-          → adminAuth.updateUser({ password })
-          → UI → /profiles/create (or /profiles/update if a profile already exists)
+signUpAction(seriesId, email, password) → signUpWithPassword()
+  → signUpSchema parse; series must exist && status === "open"
+       else → log "signup … -> series-<id>-closed"
+  → isOldDirectoryEmail(email)?  (seeded mustRotate account, or legacy entry with no account)
+       → log "signup … -> old-directory (sent to claim)" → { code:"claim" } → UI: "Reclaim my profile"
+  → REST accounts:signUp { email, password, returnSecureToken }
+       EMAIL_EXISTS → log "signup … -> exists" → { code:"exists" } → UI: Sign in / Reset password
+  → createSessionCookie(idToken)
+  → sendOobCode(VERIFY_EMAIL, idToken, continueUrl=/profiles/create)   (best effort)
+  → log "signup … series=<id> -> ok" → UI → /profiles/create
 ```
+
+The new account is signed in but unverified. `/profiles/create` shows a **Verify your email** banner
+(resend + spam notice); `createProfileAction`'s live `freshEmailVerified` gate blocks saving until
+the link is opened. Sign-up necessarily reveals whether an address is registered.
 
 ### 4.6 Claim — legacy entry, series 24 only — `/profiles/claim` (`ClaimFlow`)
 
@@ -258,6 +245,30 @@ forgot-password.
 seeded accounts, so real-world sends are rare — the `[auth] claim start … -> <reason>`
 log line is how you tell a silent skip from a real send.
 
+### 4.9 Google — `/api/auth/google/start` → `/api/auth/google/callback`
+
+```
+start?next=<same-site path>
+  → state + PKCE verifier + next in HttpOnly cookie "__g_oauth" (10 min, path /api/auth/google)
+  → 302 accounts.google.com (scope openid email profile, S256, prompt=select_account)
+callback?code&state
+  → state must match cookie (else "google -> state-mismatch")
+  → code → oauth2.googleapis.com/token → Google id_token (email_verified required)
+  → isOldDirectoryEmail(email)? → /profiles/claim?from=google, no session
+  → REST signInWithIdp(id_token, providerId=google.com)    ← creates the account on first use
+       needConfirmation (same email already has a password account)
+         → adminAuth.updateUser(uid, { providerToLink: google.com }) → idTokenForUid(uid)
+  → createSessionCookie → mark emailVerified
+  → no profile → /profiles/create ; else → next or /profiles/<uid>
+  any failure → /profiles/update?authError=google  (log "[auth] google -> <reason>")
+```
+
+Setup: Firebase → Authentication → Sign-in method → **Google** enabled; env
+`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` = the **Web client** shown in that Google
+provider's settings (its audience must match what Firebase accepts); Google Cloud → Credentials →
+that client → Authorized redirect URIs: `<site>/api/auth/google/callback` for every site base
+(`https://ruetcse24-new.vercel.app`, `http://localhost:3000`).
+
 ### 4.7 Profile create / update — `/profiles/create`, `/profiles/update`
 
 - Both are session-gated by their `layout.tsx` (`getSession`).
@@ -290,9 +301,9 @@ All UI entry points, in `lib/db/students/students.server.ts`:
 | `requestPasswordResetAction` | `auth.service.requestPasswordReset` |
 | `changePasswordAction` | `auth.service.changePassword` |
 | `deleteAccountAction` | `auth.service.deleteAccount` |
-| `completePasswordRotationAction` | `rotation.completePasswordRotation` |
 | `startClaimAction` / `openClaimLinkAction` / `completeClaimAction` | `claim.server.*` |
-| `startJoinAction` / `openJoinLinkAction` / `completeJoinAction` | `join.server.*` |
+| `signUpAction` | `join.server.signUpWithPassword` |
+| `getViewerSessionAction` | `{ email, emailVerified }` (live) — signed in, with or without a profile |
 | `resendVerificationAction` | `verification.resendVerification` |
 | `createProfileAction` / `updateProfileAction` / `updateContactAction` | Admin repo (`freshEmailVerified` gate on create) |
 | `getMyProfileAction` / `getMyContactAction` | session-scoped reads |
@@ -307,7 +318,11 @@ All UI entry points, in `lib/db/students/students.server.ts`:
 - [x] Browser never holds idToken/refresh token — HttpOnly session cookie only.
 - [x] `checkRevoked: true` on every session read.
 - [x] Credential changes require re-authentication with the current password.
-- [x] Anti-enumeration: uniform responses for claim/join/reset; reasons only in logs.
+- [x] Anti-enumeration: uniform responses for claim/reset; reasons only in logs (sign-up
+      inherently reveals registration).
+- [x] Old-directory profiles reclaimable **only** via the Claim link — pincode sign-in, sign-up
+      and Google all refuse them.
+- [x] Google OAuth uses `state` + PKCE; `next` accepted only as a same-site path.
 - [x] Eligibility decided server-side at **send and completion** time, never trusted from
       the client; `series` always derived from the roll.
 - [x] 60 s resend cooldown per flow via hashed Firestore keys (no raw emails at rest).
@@ -335,14 +350,16 @@ production: **Vercel → Functions → runtime logs**, filter `[auth]`. Successe
 | `[auth] claim cooldown <masked> (resend dropped)` | 60 s resend window |
 | `[auth] claim link -> …` | Magic-link step outcomes (`ok`, `email-mismatch`, `no-legacy`, `roll-held`, `invalid-input`) |
 | `[auth] claim complete -> …` | Final claim outcomes (`ok roll=… uid=…`, `no-session`, `roll-held`, `reserve-failed`, …) |
-| `[auth] join start <masked> series=<id> -> eligible\|series-<id>-closed` | Join send decision |
-| `[auth] join cooldown / join link / join complete …` | Same shape as claim |
+| `[auth] signup <masked> … -> ok\|exists\|old-directory (sent to claim)\|series-<id>-closed` | Email + password sign-up outcome |
+| `[auth] signin <masked> -> needs-claim` | Seeded pincode account refused; sent to Claim |
+| `[auth] google <masked> -> ok …\|linked to existing …\|old-directory (sent to claim)` | Google sign-in/up outcome |
+| `[auth] google -> state-mismatch\|token-exchange …\|idp <code>\|consent-<error>` | Google failure reason |
 | `[auth] verify-resend <masked> -> already-verified\|ok` | Resend-verification button |
 | `[auth] create-profile -> email-not-verified uid=…` | Profile-creation gate blocked |
 | `[auth] fresh email verification check failed …` | Admin read failed (treated as unverified) |
 | `[auth] session creation failed …` / `identity toolkit … rejected …` | Infra-level errors |
 
-**Reading a claim/join problem:** find the `claim start` / `join start` line first — it
+**Reading a claim problem:** find the `claim start` line first — it
 tells you the exact deny reason; then check the `oob` line to see whether Firebase
 actually accepted the send (`OPERATION_NOT_ALLOWED` = EMAIL_SIGNIN toggle off,
 `INVALID_EMAIL` / `EMAIL_NOT_FOUND` = address problems).
@@ -351,7 +368,7 @@ actually accepted the send (`OPERATION_NOT_ALLOWED` = EMAIL_SIGNIN toggle off,
 
 ## 8. Current status & known gotchas
 
-- `EMAIL_SIGNIN` toggle **enabled** in the Firebase console (claim/join mail works;
+- `EMAIL_SIGNIN` toggle **enabled** in the Firebase console (claim mail works;
   probes return 200).
 - `PASSWORD_RESET` / `VERIFY_EMAIL` toggles enabled.
 - E2E claim test requires a `legacyProfiles` scratch entry for a controllable email —

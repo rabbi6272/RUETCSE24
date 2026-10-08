@@ -33,7 +33,13 @@ const EMAIL_STORAGE_KEY = "claimEmailForSignIn";
  * landing URL together with the address it was sent to (kept in
  * sessionStorage, or re-entered when the link is opened on another device).
  */
-export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
+export function ClaimFlow({
+  oobCode,
+  fromGoogle = false,
+}: {
+  oobCode?: string | null;
+  fromGoogle?: boolean;
+}) {
   const router = useRouter();
 
   const [step, setStep] = useState<Step>("email");
@@ -44,7 +50,11 @@ export function ClaimFlow({ oobCode }: { oobCode?: string | null }) {
   const [sec, setSec] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(
+    fromGoogle
+      ? "That Google account's email belongs to a profile from the old directory. Reclaim it here first — afterwards you can sign in with Google."
+      : null,
+  );
   const landingHandled = useRef(false);
 
   function fail(message: string) {

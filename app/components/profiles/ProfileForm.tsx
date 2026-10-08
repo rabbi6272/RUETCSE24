@@ -34,7 +34,9 @@ import {
 } from "../ui/Field";
 import { Alert } from "../ui/Icon";
 import { Skeleton } from "../ui/StateBlock";
+import { resendVerificationAction } from "../../../lib/db/students/students.server";
 import { ImagePicker } from "./ImagePicker";
+import { SpamNotice } from "./SpamNotice";
 import { SignInPanel } from "./SignInPanel";
 
 import type {
@@ -164,14 +166,16 @@ export function ProfileForm({ mode }: ProfileFormProps) {
       bio: values.bio,
       hobby: values.hobby,
       fbProfile: values.fbProfile,
-      profilePicture: picture,
     };
 
     // Same schemas the server uses, so the user sees the real message instead of
-    // a generic failure. The server revalidates regardless.
+    // a generic failure. The server revalidates regardless. The photo is not
+    // part of an update: it saves itself the moment it is uploaded or removed.
+    // (Create still sends it to satisfy the draft schema; the server ignores it
+    // and reads the uploaded avatar from Cloudinary.)
     const parsed =
       mode === "create"
-        ? profileDraftSchema.safeParse(draft)
+        ? profileDraftSchema.safeParse({ ...draft, profilePicture: picture })
         : updateProfileSchema.safeParse({ ...draft, published: values.published });
 
     if (!parsed.success) {
@@ -239,6 +243,16 @@ export function ProfileForm({ mode }: ProfileFormProps) {
   async function removeServerImage() {
     const response = await fetch("/api/profiles/delete-image", { method: "DELETE" });
     return response.ok;
+  }
+
+  // In edit mode the upload/delete routes have already saved the change, so
+  // confirm it and refresh every view of this profile.
+  function onPictureChange(next: ProfilePicture) {
+    setPicture(next);
+    if (mode !== "update") return;
+    toast.success(next.url ? "Photo updated" : "Photo removed");
+    void queryClient.invalidateQueries({ queryKey: studentsKeys.all });
+    router.refresh();
   }
 
   if (sessionPending || viewerPending || contactPending) {
@@ -315,7 +329,7 @@ export function ProfileForm({ mode }: ProfileFormProps) {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 lg:py-12">
-      <h1 className="text-2xl font-bold tracking-tight text-fg">
+      <h1 className="text-3xl font-bold tracking-tight text-fg">
         {creating ? "Create your profile" : "Edit profile"}
       </h1>
       <p className="mt-1.5 text-sm text-fg-muted">
@@ -324,6 +338,10 @@ export function ProfileForm({ mode }: ProfileFormProps) {
           ? " Only full name and roll are required — you can fill in the rest later."
           : " Your email address cannot be changed."}
       </p>
+
+      {creating && !session.emailVerified ? (
+        <VerifyEmailBanner email={session.email} />
+      ) : null}
 
       <form
         onSubmit={onSubmit}
@@ -340,8 +358,8 @@ export function ProfileForm({ mode }: ProfileFormProps) {
           <ImagePicker
             name={values.fullName || "Profile"}
             picture={picture}
-            onChange={setPicture}
-            onServerRemove={creating ? undefined : removeServerImage}
+            onChange={onPictureChange}
+            onServerRemove={removeServerImage}
             disabled={busy}
           />
         </section>
@@ -480,15 +498,15 @@ export function ProfileForm({ mode }: ProfileFormProps) {
           />
 
           {creating ? null : (
-          <div className="rounded-control border border-border bg-surface-sunken p-4">
-            <ToggleField
-              name="published"
-              label="Show my profile in the directory"
-              hint="When off, only you can see your profile."
-              checked={values.published}
-              onChange={(checked) => set("published", checked)}
-            />
-          </div>
+            <div className="rounded-control border border-border bg-surface-sunken p-4">
+              <ToggleField
+                name="published"
+                label="Show my profile in the directory"
+                hint="When off, only you can see your profile."
+                checked={values.published}
+                onChange={(checked) => set("published", checked)}
+              />
+            </div>
           )}
         </section>
 
@@ -518,6 +536,49 @@ export function ProfileForm({ mode }: ProfileFormProps) {
           </Link>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Email/password sign-ups start unverified and `createProfileAction` refuses
+ * to save until the link is opened, so say so before they fill in the form.
+ */
+function VerifyEmailBanner({ email }: { email: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  async function resend() {
+    setState("sending");
+    const result = await resendVerificationAction().catch(() => null);
+    setState(result?.ok ? "sent" : "error");
+  }
+
+  return (
+    <div className="mt-6 space-y-3 rounded-panel border border-border-strong bg-surface p-5 shadow-card">
+      <p className="text-sm font-bold text-fg">Verify your email to save your profile</p>
+      <p className="text-sm leading-relaxed text-fg-muted">
+        We sent a verification link to <strong className="break-all text-fg">{email}</strong>.
+        Open it, then come back and press Create profile — you can fill in the form meanwhile.
+      </p>
+      <SpamNotice />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          busy={state === "sending"}
+          busyLabel="Sending…"
+          disabled={state === "sent"}
+          onClick={resend}
+        >
+          {state === "sent" ? "Link sent again" : "Resend verification email"}
+        </Button>
+        {state === "error" ? (
+          <span role="alert" className="text-sm font-medium text-danger">
+            Could not resend. Try again in a minute.
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

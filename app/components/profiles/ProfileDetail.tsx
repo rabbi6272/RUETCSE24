@@ -73,8 +73,6 @@ export function ProfileDetail({ id }: { id: string }) {
     );
   }
 
-  // Rules only serve published documents to other users, so a null here is the
-  // expected result for an unpublished, deleted, or non-existent profile.
   if (!profile) {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:py-12">

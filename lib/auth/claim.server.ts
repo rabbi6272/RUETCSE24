@@ -11,6 +11,7 @@ import {
   deleteProfileDoc,
   patchProfile,
   findLegacyByEmail,
+  findProfileById,
   findProfileByRoll,
   releaseRoll,
   removeLegacy,
@@ -23,6 +24,7 @@ import { createSessionCookie, getSession } from "./session";
 import { hashKey } from "./tokens";
 import { idTokenForUid } from "./verification.server";
 import { siteUrlFor } from "../site-url";
+import { avatarPublicId, moveToAvatar } from "../media/avatar.server";
 import { seriesFromRoll } from "../../types/series";
 
 import type { LegacyProfile, Profile } from "../../types/Student";
@@ -226,6 +228,21 @@ export async function openClaimLink(
   return { ok: true, mode: "claim", needsSection: false };
 }
 
+/**
+ * Moves an old-site photo onto the account's avatar id so it follows the same
+ * ownership rule as every other photo. Best effort: on failure the profile
+ * keeps the old id, which the photo routes still recognise.
+ */
+async function adoptPhoto(uid: string, publicId: string): Promise<void> {
+  if (!publicId || publicId === avatarPublicId(uid)) return;
+  try {
+    const picture = await moveToAvatar(publicId, uid);
+    await patchProfile(uid, { profilePicture: picture });
+  } catch (error) {
+    console.error(`[photo] adopt on claim failed uid=${uid}`, error);
+  }
+}
+
 function legacyToProfile(legacy: LegacyProfile, uid: string, now: number): Profile {
   const sec = legacy.sec === "" ? "a" : legacy.sec;
 
@@ -303,6 +320,7 @@ export async function completeClaim(
     }
 
     await removeLegacy(legacy.legacyId);
+    await adoptPhoto(session.uid, legacy.profilePicture?.publicId ?? "");
 
     console.log(`[auth] claim complete -> ok roll=${legacy.roll} uid=${session.uid}`);
     return { ok: true, uid: session.uid };
@@ -366,6 +384,9 @@ async function completeActivation(
   } else {
     console.error(`[auth] claim complete (activate) re-sign-in failed uid=${session.uid}`);
   }
+
+  const profile = await findProfileById(session.uid).catch(() => null);
+  await adoptPhoto(session.uid, profile?.profilePicture?.publicId ?? "");
 
   console.log(`[auth] claim complete -> ok (activate) uid=${session.uid}`);
   return { ok: true, uid: session.uid };

@@ -35,7 +35,8 @@ export function ImagePicker({
   disabled,
 }: ImagePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyLoading, setBusyLoading] = useState(false);
+  const [busyDeleting, setBusyDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function upload(file: File) {
@@ -51,7 +52,7 @@ export function ImagePicker({
       return;
     }
 
-    setBusy(true);
+    setBusyLoading(true);
 
     try {
       const body = new FormData();
@@ -78,7 +79,7 @@ export function ImagePicker({
     } catch {
       setError("Upload failed. Check your connection and try again.");
     } finally {
-      setBusy(false);
+      setBusyLoading(false);
       // Allow re-selecting the same file after a failure.
       if (inputRef.current) inputRef.current.value = "";
     }
@@ -86,7 +87,7 @@ export function ImagePicker({
 
   async function remove() {
     setError(null);
-    setBusy(true);
+    setBusyDeleting(true);
 
     try {
       if (onServerRemove) {
@@ -99,7 +100,8 @@ export function ImagePicker({
 
       onChange({ publicId: "", url: "" });
     } finally {
-      setBusy(false);
+      setBusyDeleting(false);
+      setBusyLoading(false);
     }
   }
 
@@ -108,33 +110,33 @@ export function ImagePicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-4">
-        <Avatar name={name} src={picture.url} size="lg" />
+        <Avatar name={name} src={picture.url} size="xxl" />
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2">
           <Button
             type="button"
             variant="secondary"
             size="sm"
-            busy={busy}
-            disabled={disabled}
+            busy={busyLoading}
+            disabled={busyLoading || disabled}
             onClick={() => inputRef.current?.click()}
           >
             <Camera className="size-4" />
             {hasImage ? "Change photo" : "Upload photo"}
           </Button>
 
-          {hasImage ? (
+          {hasImage && (
             <Button
               type="button"
-              variant="ghost"
+              variant="danger"
               size="sm"
-              busy={busy}
-              disabled={disabled}
+              busy={busyDeleting}
+              disabled={busyDeleting || disabled}
               onClick={() => void remove()}
             >
               Remove
             </Button>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -143,15 +145,14 @@ export function ImagePicker({
         type="file"
         accept={ACCEPT}
         className="sr-only-focusable"
-        disabled={disabled || busy}
+        disabled={disabled || busyLoading}
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) void upload(file);
         }}
       />
 
-      <p className="flex items-center gap-1.5 text-xs text-fg-subtle">
-        {busy ? <Spinner className="size-3.5" /> : null}
+      <p className="flex items-center gap-1.5 text-xs text-fg-muted">
         JPEG, PNG, or WebP up to 5 MB. A square image works best.
       </p>
 

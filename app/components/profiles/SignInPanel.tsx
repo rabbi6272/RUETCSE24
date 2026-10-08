@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useSignIn } from "../../../lib/db/students/students.hooks";
 import { resendVerificationAction } from "../../../lib/db/students/students.server";
 
-import { Button } from "../ui/Button";
+import { Button, buttonClasses } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Alert, Check } from "../ui/Icon";
 
+import { GoogleButton, OrDivider } from "./GoogleButton";
 import { SpamNotice } from "./SpamNotice";
 
 /**
@@ -25,18 +26,29 @@ import { SpamNotice } from "./SpamNotice";
  */
 export function SignInPanel({ context }: { context: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
   const [verifyNotice, setVerifyNotice] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
+  const [needsClaim, setNeedsClaim] = useState(false);
 
   const signIn = useSignIn();
+
+  // The Google callback lands here with `?authError=google` when it fails.
+  // Read once on mount (no `useSearchParams`, so no Suspense boundary needed).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("authError") === "google") {
+      setFormError("Google sign-in didn't go through. Try again, or use your email and password.");
+    }
+  }, []);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
+    setNeedsClaim(false);
 
     const result = await signIn.mutateAsync({ email, password }).catch(() => null);
 
@@ -47,15 +59,8 @@ export function SignInPanel({ context }: { context: string }) {
 
     if (!result.ok) {
       setFormError(result.error);
-      return;
-    }
-
-    // A seeded account is signed in but not yet usable: its password is the old
-    // public pincode. Send it straight to the upgrade instead of letting the
-    // form behind this panel render.
-    if (result.mustRotate) {
-      router.push("/profiles/set-password");
-      router.refresh();
+      // Old-directory account: the pincode is not accepted, only the Claim link.
+      setNeedsClaim(result.code === "claim");
       return;
     }
 
@@ -149,10 +154,10 @@ export function SignInPanel({ context }: { context: string }) {
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10 sm:px-6">
       <div className="rounded-panel border border-border bg-surface p-6 shadow-card sm:p-8">
-        <h1 className="text-xl font-bold tracking-tight text-fg">Sign in</h1>
-        <p className="mt-1.5 text-sm text-fg-muted">{context}</p>
+        <h1 className="text-center text-3xl font-bold tracking-tight text-fg">Sign in</h1>
+        <p className="mt-0.5 text-center text-base text-fg-muted">{context}</p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+        <form onSubmit={onSubmit} className="space-y-2" noValidate>
           <TextField
             label="Email"
             type="email"
@@ -183,6 +188,12 @@ export function SignInPanel({ context }: { context: string }) {
             </p>
           ) : null}
 
+          {needsClaim ? (
+            <Link href="/profiles/claim" className={buttonClasses("primary", "md", "w-full")}>
+              Reclaim with email link
+            </Link>
+          ) : null}
+
           <Button
             type="submit"
             busy={signIn.isPending}
@@ -192,6 +203,12 @@ export function SignInPanel({ context }: { context: string }) {
             Sign in
           </Button>
         </form>
+
+        <OrDivider />
+
+        <div className="mt-6">
+          <GoogleButton next={pathname ?? undefined} />
+        </div>
 
         <div className="mt-6 space-y-2 border-t border-border pt-5 text-sm">
           <p>
@@ -213,12 +230,12 @@ export function SignInPanel({ context }: { context: string }) {
             to create an account.
           </p>
           <p className="text-fg-muted">
-            Joined before this site moved to Firebase?{" "}
+            Had a profile in the old directory?{" "}
             <Link
               href="/profiles/claim"
               className="font-semibold text-ink-700 underline-offset-4 hover:text-ink-900 hover:underline"
             >
-              Claim your existing profile
+              Reclaim it with an email link
             </Link>
             .
           </p>

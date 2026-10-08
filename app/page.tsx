@@ -12,8 +12,6 @@ export const metadata: Metadata = createMetadata({
   path: "/",
 });
 
-// Counts change as profiles publish; ISR keeps the picker fresh without
-// re-running the Admin queries on every visit.
 export const revalidate = 300;
 
 /**
